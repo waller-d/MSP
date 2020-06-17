@@ -12,6 +12,15 @@
 library(readr)
 
 
+# Function replacing Yes and No variables as 1s and 0s
+yes_one_no_zero <- function(x){
+  x[x=="N"] <- 0
+  x[x=="No"] <- 0
+  x[x=="Y"] <- 1
+  x[x=="Yes"] <- 1
+  as.logical(as.numeric(x))
+}
+
 # Import student data and define data type for each column
 students <- read_csv("one_student_one_row_de_identified.csv", 
                      col_types = cols(
@@ -142,13 +151,8 @@ students <- read_csv("one_student_one_row_de_identified.csv",
                        wiepgroup_mentoring_flag = col_logical(),
                        wieppair_mentoring_flag = col_logical()))
 
-students$profile_firstime_fulltime_ind[students$profile_firstime_fulltime_ind=="N"] <- 0
-students$profile_firstime_fulltime_ind[students$profile_firstime_fulltime_ind=="Y"] <- 1
-students$profile_firstime_fulltime_ind <- as.logical(as.numeric(students$profile_firstime_fulltime_ind))
-
-students$profile_underrep_minority_ind[students$profile_underrep_minority_ind=="N"] <- 0
-students$profile_underrep_minority_ind[students$profile_underrep_minority_ind=="Y"] <- 1
-students$profile_underrep_minority_ind <- as.logical(as.numeric(students$profile_underrep_minority_ind))
+students$profile_firstime_fulltime_ind <- yes_one_no_zero(students$profile_firstime_fulltime_ind)
+students$profile_underrep_minority_ind <- yes_one_no_zero(students$profile_underrep_minority_ind)
 
 students$profile_gender_desc[students$profile_gender_desc=="Female"] <- 0
 students$profile_gender_desc[students$profile_gender_desc=="Male"] <- 1
