@@ -4,3 +4,12 @@
 .Ruserdata
 grades_join_with_all_de_identified.csv
 one_student_one_row_de_identified.csv
+students.csv
+num_data_students_stat.txt
+MSP-results.html
+MSP-results.log
+MSP-results.tex
+log_data_students_stat.txt
+cat_data_students.txt
+correlation-matrix.csv
+demographic-descriptives.txt
