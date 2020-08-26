@@ -6,7 +6,10 @@ output:
   html_document: default
   pdf_document: default
 ---
-
+---  
+---  
+---  
+  
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(readr)
@@ -16,6 +19,7 @@ library(readxl)
 library(pander)
 library(reshape2)
 library(psych)
+library(gmodels)
 
 # Function replacing Yes and No variables as 1s and 0s
 yes_one_no_zero <- function(x){
@@ -26,96 +30,307 @@ yes_one_no_zero <- function(x){
   as.logical(as.numeric(x))
 }
 
-# Function to create bar charts for a given demographic variable (dem) faceted by semester
-# Two bar charts are generated, one for 1-year rentention and one for 6-year graduation
-ret_grad_plots <- function(dat, dem, time){
-  
-  # Create data frame with values for plotting over time
-  data <- dat %>% 
-    group_by_at(vars(dem, time)) %>% # allows for grouping by input string variables
-    summarise("N"=n(),
-              `Mean SAT`=mean(SAT_new, na.rm = TRUE),
-              `SD SAT`=sd(SAT_new, na.rm = TRUE),
-              `% 1 year\nretention`=mean(one_year_retention_flag),
-              `SD 1 year\nretention` = sd(one_year_retention_flag),
-              `% 6 year\ngraduation`=mean(six_year_graduation_flag),
-              `SD 6 year\ngraduation`=sd(six_year_graduation_flag)) %>% 
-    separate(profile_academic_period_desc, c("Term","Year"))
-  ycol1 <- "`% 1 year\nretention`" # for work around for parsing errors from aes_string
-  ycol2 <- "`% 6 year\ngraduation`" # for work around for parsing errors from aes_string
-  
-  # Create data frame for plotting all outcomes
-  data2 <- dat %>% 
-    group_by_at(vars(dem)) %>% # allows for grouping by input string variables
-    summarise("N"=n(),
-              `Mean SAT`=mean(SAT_new, na.rm = TRUE),
-              `SD SAT`=sd(SAT_new, na.rm = TRUE),
-              `% 1 year\nretention`=mean(one_year_retention_flag),
-              `% 2 year\nretention`=mean(one_year_retention_flag),
-              `% 3 year\nretention`=mean(one_year_retention_flag),
-              `% 3 year\ngraduation`=mean(six_year_graduation_flag),
-              `% 4 year\ngraduation`=mean(six_year_graduation_flag),
-              `% 5 year\ngraduation`=mean(six_year_graduation_flag),
-              `% 6 year\ngraduation`=mean(six_year_graduation_flag))
-  data3 <- gather(data2, outcome, percentage, `% 1 year\nretention`:`% 6 year\ngraduation`)
+# Function to replace NAs with zeros
+nas_to_zeros <- function(y){
+  y[is.na(y)] <- 0
+}
 
-  # Create a bar chart for the demographic variable faceted by semester
-  # Bar chart is for 1-year retention
-  plot1 <- ggplot(data3) +
-    geom_bar(aes_string(x = "outcome", y = "percentage", fill = dem), stat = "identity", position = "dodge") +
+# Function to create a table of outcomes for a given demographic variable, a bar chart for the outcomes,
+# two line charts for outcomes over time (1-year rentention and 6-year graduation), and one line chart
+# that has both combined
+
+retention_graduation_results <- function(df, demographic){
+  # Defuse the "demographic" variable input for data-masking
+  # This will prevent the evaluation of the code and allow
+  # for it to be evaluated in the context of the data frame
+  x_var <- enquo(demographic)
+  
+  # Calculate percentages of outcome data for each group in the
+  # "demographic" variable
+  df_wide <- df %>% 
+    group_by(!! x_var) %>% 
+    summarise("N"=n(),
+              "% first-time full-time"=mean(profile_firstime_fulltime_ind),
+              "% first-year first-generation"=mean(first_year_first_gen_flag),
+              "% first-generation"=mean(first_gen_flag),
+              "Mean SAT"=mean(SAT_new, na.rm = TRUE),
+              "SD SAT"=sd(SAT_new, na.rm = TRUE),
+              "% 1 year retention"=mean(one_year_retention_flag),
+              "% 2 year retention"=mean(two_year_retention_flag),
+              "% 3 year retention"=mean(three_year_retention_flag),
+              "% 3 year graduation"=mean(three_year_graduation_flag),
+              "% 4 year graduation"=mean(four_year_graduation_flag),
+              "% 5 year graduation"=mean(five_year_graduation_flag),
+              "% 6 year graduation"=mean(six_year_graduation_flag),
+              "SE 1 year retention"=mean(one_year_retention_flag)*(1-mean(one_year_retention_flag))/sqrt(n()),
+              "SE 2 year retention"=mean(two_year_retention_flag)*(1-mean(two_year_retention_flag))/sqrt(n()),
+              "SE 3 year retention"=mean(three_year_retention_flag)*(1-mean(three_year_retention_flag))/sqrt(n()),
+              "SE 3 year graduation" = mean(three_year_graduation_flag)*(1-mean(three_year_graduation_flag))/sqrt(n()),
+              "SE 4 year graduation" = mean(four_year_graduation_flag)*(1-mean(four_year_graduation_flag))/sqrt(n()),
+              "SE 5 year graduation" = mean(five_year_graduation_flag)*(1-mean(five_year_graduation_flag))/sqrt(n()),
+              "SE 6 year graduation" = mean(six_year_graduation_flag)*(1-mean(six_year_graduation_flag))/sqrt(n()))
+  
+  # Create data frame without SE for report
+  df_wide_2 <- df_wide %>% 
+    select(!! x_var:"% 6 year graduation")
+
+  # Convert dara from wide to long format for bar chart plotting
+  df_long <- df_wide %>% 
+    pivot_longer(cols = "% 1 year retention":"% 6 year graduation",
+                 names_to = "Outcomes",
+                 values_to = "Percent") %>% 
+    mutate(SE = Percent*(1-Percent)/sqrt(N))
+
+  # Convert "Outcomes" variable to a factor with specified order
+  df_long$Outcomes <- factor(df_long$Outcomes, levels = df_long$Outcomes[1:7])
+
+  # Create a bar chart for each "Outcomes" variable for each demographic group
+  barchart <-  ggplot(data = df_long, aes(x = Outcomes, y = Percent, fill = !! x_var)) +
+    geom_bar(stat = "identity", position = "dodge") +
+    geom_errorbar(aes(ymin = Percent-SE, ymax = Percent+SE), width = 0.1, position = position_dodge(.9)) +
     scale_fill_hue(l=40) +
     theme(axis.text.x = element_text(angle = 90, hjust = 1))
   
-  # # Create a bar chart for the demographic variable faceted by semester
-  # # Bar chart is for 6-year graduation
-  # plot2 <- ggplot(data) +
-  #   geom_bar(aes_string(x = dem, y = ycol2, fill = dem), stat = "identity") +
-  #   facet_grid(Term ~ Year) +
-  #   scale_fill_hue(l=40) +
-  #   theme(axis.text.x = element_text(angle = 90, hjust = 1))
-  
+  # Calculate percentages of outcome data for each group in the
+  # "demographic" variable for each academic period
+  df_time <- df %>% 
+    group_by(!! x_var, profile_academic_period_desc) %>%
+    summarise("N" = n(),
+              "Mean SAT"= mean(SAT_new, na.rm = TRUE),
+              "SD SAT"= sd(SAT_new, na.rm = TRUE),
+              "% 1 year retention" = mean(one_year_retention_flag),
+              "SE 1 year retention" = mean(one_year_retention_flag)*(1-mean(one_year_retention_flag))/sqrt(n()),
+              "% 6 year graduation" = mean(six_year_graduation_flag),
+              "SE 6 year graduation" = mean(six_year_graduation_flag)*(1-mean(six_year_graduation_flag))/sqrt(n())) %>% 
+    separate(profile_academic_period_desc, c("Term","Year"))
+
   # Create a line chart for the demographic variable over time faceted by semester
   # Line chart for 1-year retention
-  plot3 <- ggplot(data, aes(x = Year, y = `% 1 year\nretention`)) +
-    geom_point(aes_string(group = dem, color = dem)) +
-    geom_line(aes_string(group = dem, color = dem)) +
-    #geom_errorbar(aes(ymin = `% 6 year\ngraduation`-`SD 6 year\ngraduation`, ymax = `% 6 year\ngraduation`+`SD 6 year\ngraduation`, width = 0.1)) +
-    facet_grid(.~Term) +
-    scale_fill_hue(l=40)
+  linechart_1year <- ggplot(data = df_time, aes(x = Year, y = `% 1 year retention`)) +
+    geom_point(aes(group = !! x_var, color = !! x_var)) +
+    geom_line(aes(group = !! x_var, color = !! x_var)) +
+    geom_errorbar(aes(ymin = (`% 1 year retention`-`SE 1 year retention`), ymax = (`% 1 year retention`+`SE 1 year retention`), width = 0.1)) +
+    facet_grid(. ~ Term) +
+    scale_fill_hue(l = 40)
   
   # Create a line chart for the demographic variable over time faceted by semester
   # Line chart for 6-year graduation
-  plot4 <- ggplot(data, aes(x = Year, y = `% 6 year\ngraduation`)) +
-    geom_point(aes_string(group = dem, color = dem)) +
-    geom_line(aes_string(group = dem, color = dem)) +
-    #geom_errorbar(aes(ymin = `% 1 year\nretention`-`SD 1 year\nretention`, ymax = `% 1 year\nretention`+`SD 1 year\nretention`, width = 0.1)) +
-    facet_grid(.~Term) +
-    scale_fill_hue(l=40)
+  linechart_6year <- ggplot(df_time, aes(x = Year, y = `% 6 year graduation`)) +
+    geom_point(aes(group = !! x_var, color = !! x_var)) +
+    geom_line(aes(group = !! x_var, color = !! x_var)) +
+    geom_errorbar(aes(ymin = `% 6 year graduation`-`SE 6 year graduation`, ymax = `% 6 year graduation`+`SE 6 year graduation`, width = 0.1)) +
+    facet_grid(. ~ Term) +
+    scale_fill_hue(l = 40)
   
-  plots <- list(plot1, plot3, plot4)
-  # Return the plot to the function call
-  return(plots)
+  # Return the wide format data, bar chart, and line charts
+  return(list(df_wide_2, barchart, linechart_1year, linechart_6year))
+}
+
+# Function for the comparing outcomes based on enrollment term
+retention_graduation_results_term <- function(df, ftft){
+  # Calculate percentages of outcome data for each group
+  df_wide <- df %>% 
+    filter(profile_firstime_fulltime_ind == ftft) %>% 
+    separate(profile_academic_period_desc, c("Term", "Year")) %>% 
+    group_by(Term) %>% 
+    summarise("N"=n(),
+              "% first-time full-time"=mean(profile_firstime_fulltime_ind),
+              "% first-year first-generation"=mean(first_year_first_gen_flag),
+              "% first-generation"=mean(first_gen_flag),
+              "Mean SAT"=mean(SAT_new, na.rm = TRUE),
+              "SD SAT"=sd(SAT_new, na.rm = TRUE),
+              "% 1 year retention"=mean(one_year_retention_flag),
+              "% 2 year retention"=mean(two_year_retention_flag),
+              "% 3 year retention"=mean(three_year_retention_flag),
+              "% 3 year graduation"=mean(three_year_graduation_flag),
+              "% 4 year graduation"=mean(four_year_graduation_flag),
+              "% 5 year graduation"=mean(five_year_graduation_flag),
+              "% 6 year graduation"=mean(six_year_graduation_flag),
+              "SE 1 year retention"=mean(one_year_retention_flag)*(1-mean(one_year_retention_flag))/sqrt(n()),
+              "SE 2 year retention"=mean(two_year_retention_flag)*(1-mean(two_year_retention_flag))/sqrt(n()),
+              "SE 3 year retention"=mean(three_year_retention_flag)*(1-mean(three_year_retention_flag))/sqrt(n()),
+              "SE 3 year graduation" = mean(three_year_graduation_flag)*(1-mean(three_year_graduation_flag))/sqrt(n()),
+              "SE 4 year graduation" = mean(four_year_graduation_flag)*(1-mean(four_year_graduation_flag))/sqrt(n()),
+              "SE 5 year graduation" = mean(five_year_graduation_flag)*(1-mean(five_year_graduation_flag))/sqrt(n()),
+              "SE 6 year graduation" = mean(six_year_graduation_flag)*(1-mean(six_year_graduation_flag))/sqrt(n()))
+  
+  # Convert dara from wide to long format for bar chart plotting
+  df_long <- df_wide %>% 
+    pivot_longer(cols = "% 1 year retention":"% 6 year graduation",
+                 names_to = "Outcomes",
+                 values_to = "Percent") %>% 
+    mutate(SE = Percent*(1-Percent)/sqrt(N))
+  
+  # Convert "Outcomes" variable to a factor with specified order
+  df_long$Outcomes <- factor(df_long$Outcomes, levels = df_long$Outcomes[1:7])
+  
+  # Create a bar chart for each "Outcomes" variable for each demographic group
+  barchart <-  ggplot(data = df_long, aes(x = Outcomes, y = Percent, fill = Term)) +
+    geom_bar(stat = "identity", position = "dodge") +
+    geom_errorbar(aes(ymin = Percent-SE, ymax = Percent+SE), width = 0.1, position = position_dodge(.9)) +
+    scale_fill_hue(l=40) +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1))
+  
+  # Calculate percentages of outcome data for each semester
+  df_wide_time <- df %>% 
+    filter(profile_firstime_fulltime_ind == ftft) %>% 
+    group_by(profile_academic_period_desc) %>% 
+    summarise("N"=n(),
+              "% first-time full-time"=mean(profile_firstime_fulltime_ind),
+              "% first-year first-generation"=mean(first_year_first_gen_flag),
+              "% first-generation"=mean(first_gen_flag),
+              "Mean SAT"=mean(SAT_new, na.rm = TRUE),
+              "SD SAT"=sd(SAT_new, na.rm = TRUE),
+              "% 1 year retention"=mean(one_year_retention_flag),
+              "% 2 year retention"=mean(two_year_retention_flag),
+              "% 3 year retention"=mean(three_year_retention_flag),
+              "% 3 year graduation"=mean(three_year_graduation_flag),
+              "% 4 year graduation"=mean(four_year_graduation_flag),
+              "% 5 year graduation"=mean(five_year_graduation_flag),
+              "% 6 year graduation"=mean(six_year_graduation_flag),
+              "SE 1 year retention"=mean(one_year_retention_flag)*(1-mean(one_year_retention_flag))/sqrt(n()),
+              "SE 2 year retention"=mean(two_year_retention_flag)*(1-mean(two_year_retention_flag))/sqrt(n()),
+              "SE 3 year retention"=mean(three_year_retention_flag)*(1-mean(three_year_retention_flag))/sqrt(n()),
+              "SE 3 year graduation" = mean(three_year_graduation_flag)*(1-mean(three_year_graduation_flag))/sqrt(n()),
+              "SE 4 year graduation" = mean(four_year_graduation_flag)*(1-mean(four_year_graduation_flag))/sqrt(n()),
+              "SE 5 year graduation" = mean(five_year_graduation_flag)*(1-mean(five_year_graduation_flag))/sqrt(n()),
+              "SE 6 year graduation" = mean(six_year_graduation_flag)*(1-mean(six_year_graduation_flag))/sqrt(n())) %>% 
+  separate(profile_academic_period_desc, c("Term", "Year"))
+  
+  # Create a line chart for comparing the outcome for term start
+  # Line chart for 1-year retention
+  linechart_1year <- ggplot(data = df_wide_time, aes(x = Year, y = `% 1 year retention`)) +
+    geom_point(aes(group = Term, color = Term)) +
+    geom_line(aes(group = Term, color = Term)) +
+    geom_errorbar(aes(ymin = (`% 1 year retention`-`SE 1 year retention`), ymax = (`% 1 year retention`+`SE 1 year retention`), width = 0.1)) +
+    scale_fill_hue(l = 40)
+  
+  # Create a line chart for comparing the outcome for term start
+  # Line chart for 6-year graduation
+  linechart_6year <- ggplot(df_wide_time, aes(x = Year, y = `% 6 year graduation`)) +
+    geom_point(aes(group = Term, color = Term)) +
+    geom_line(aes(group = Term, color = Term)) +
+    geom_errorbar(aes(ymin = `% 6 year graduation`-`SE 6 year graduation`, ymax = `% 6 year graduation`+`SE 6 year graduation`, width = 0.1)) +
+    scale_fill_hue(l = 40)
+  
+  return(list(df_wide, barchart, linechart_1year, linechart_6year))
+}
+
+# Function for calculating population breakdowns
+population_breakdown <- function(df, ftft){
+  # Apply first-time full-time filter and seperate Term and Year into two columns
+  df <- df %>% 
+    filter(profile_firstime_fulltime_ind == ftft) %>% 
+    separate(profile_academic_period_desc, c("Term", "Year"))
+  
+  # Population numbers broken down by URM and gender
+  URM_gender <- df %>% 
+    group_by(profile_underrep_minority_ind, profile_gender_desc) %>% 
+    summarise(N = n()) %>% 
+    mutate(Percentage = N/sum(N)) #%>% 
+    #arrange(first_gen_flag)
+  
+  # Population numbers broken down by URM, gender, and first-generation
+  URM_gender_fgen <- df %>% 
+    group_by(profile_underrep_minority_ind, profile_gender_desc, first_gen_flag) %>% 
+    summarise(N = n()) %>% 
+    mutate(Percentage = N/sum(N)) #%>% 
+    #arrange(first_gen_flag)
+  
+  # Population numbers broken down by starting semester and URM
+  term_URM <- df %>% 
+    group_by(Term, profile_underrep_minority_ind) %>% 
+    summarise(N = n()) %>% 
+    mutate(Percentage = N/sum(N)) #%>% 
+    #arrange(first_gen_flag)
+  
+  # Population numbers broken down by ethnicity and gender
+  ethnicity_gender <- df %>% 
+    group_by(profile_reporting_ethnicity, profile_gender_desc) %>% 
+    summarise(N = n()) %>% 
+    mutate(Percentage = N/sum(N)) #%>% 
+    #arrange(Term)
+  
+  # Population numbers broken down by ethnicity, gender, and first-generation
+  ethnicity_gender_fgen <- df %>% 
+    group_by(profile_reporting_ethnicity, profile_gender_desc, first_gen_flag) %>% 
+    summarise(N = n()) %>% 
+    mutate(Percentage = N/sum(N)) #%>% 
+    #arrange(first_gen_flag)
+  
+  # Population numbers broken down by starting term, ethnicity, and gender 
+  term_ethnicity <- df %>% 
+    group_by(Term, profile_reporting_ethnicity) %>% 
+    summarise(N = n()) %>% 
+    mutate(Percentage = N/sum(N)) #%>% 
+    #arrange(Term)
+  
+ # Population numbers broken down by first-generation and URM 
+  fgen_URM <- df %>% 
+    group_by(first_gen_flag, profile_underrep_minority_ind) %>% 
+    summarise(N = n()) %>% 
+    mutate(Percentage = N/sum(N)) #%>% 
+    #arrange(first_gen_flag)
+  
+ # Population numbers broken down by first-generation and ethnicity
+  fgen_ethnicity <- df %>% 
+    group_by(first_gen_flag, profile_reporting_ethnicity) %>% 
+    summarise(N = n()) %>% 
+    mutate(Percentage = N/sum(N)) #%>% 
+    #arrange(first_gen_flag)
+      
+ # Population numbers broken down by first-generation and gender
+  fgen_gender <- df %>% 
+    group_by(first_gen_flag, profile_gender_desc) %>% 
+    summarise(N = n()) %>% 
+    mutate(Percentage = N/sum(N)) #%>% 
+    #arrange(first_gen_flag)
+      
+ # Population numbers broken down by starting-term and first-generation
+  term_fgen <- df %>% 
+    group_by(Term, first_gen_flag) %>% 
+    summarise(N = n()) %>% 
+    mutate(Percentage = N/sum(N)) #%>% 
+    #arrange(first_gen_flag)
+  
+  list(URM_gender, 
+       URM_gender_fgen, 
+       term_URM, 
+       ethnicity_gender,
+       ethnicity_gender_fgen,
+       term_ethnicity,
+       fgen_URM,
+       fgen_ethnicity,
+       fgen_gender,
+       term_fgen)
 }
 ```
 
-```{r data-cleaning, echo=FALSE, include=FALSE}
+```{r data-cleaning, include=FALSE}
 # Import student data and define data type for each column
-students <- read_csv("one_student_one_row_de_identified.csv", 
+students <- read_csv("one_student_one_row_de_identified_3.csv", 
+                     na = c("", "NA","–","‡","†","NULL"),
                      col_types = cols(
-                       puid = col_character(),
-                       person_uid = col_character(),
+                       hashed_puid = col_character(),
+                       hashed_person_uid = col_character(),
                        academic_school_grouping_desc = col_character(),
                        department_short_title = col_character(),
                        profile_academic_period = col_integer(),
                        profile_academic_period_desc = col_character(),
                        profile_admissions_population = col_character(),
+                       profile_admissions_pop_desc = col_character(),
                        profile_college = col_character(),
                        profile_firstime_fulltime_ind = col_character(),
                        profile_gender_desc = col_character(),
-                       profile_highest_act_composite = col_double(),
-                       profile_highest_sat_crit_read = col_double(),
                        profile_highest_sat_math = col_double(),
                        profile_highest_sat_writing = col_double(),
+                       profile_highest_sat_crit_read = col_double(),
+                       profile_highest_act_english = col_double(),
+                       profile_highest_act_math = col_double(),
+                       profile_highest_act_reading = col_double(),
+                       profile_highest_act_sci_reason = col_double(),
+                       profile_highest_act_composite = col_double(),
+                       profile_highest_act_englwrit = col_double(),
                        profile_major = col_character(),
                        profile_reporting_campus = col_character(),
                        profile_reporting_ethnicity = col_character(),
@@ -129,49 +344,53 @@ students <- read_csv("one_student_one_row_de_identified.csv",
                        four_year_graduation_flag = col_logical(),
                        five_year_graduation_flag = col_logical(),
                        six_year_graduation_flag = col_logical(),
-                       grad_1_academic_period = col_integer(),
-                       grad_1_overall_gpa = col_double(),
-                       grad_1_overall_credits_earned = col_double(),
-                       grad_1_fed_loan_amount_not_parent = col_double(),
-                       grad_1_fed_parent_loan_amount = col_double(),
-                       grad_1_degree_1_type = col_character(),
-                       grad_1_degree_1_college = col_character(),
-                       grad_1_degree_1_major = col_character(),
-                       grad_1_degree_2_type = col_character(),
-                       grad_1_degree_2_college = col_character(),
-                       grad_1_degree_2_major = col_character(),
-                       grad_1_degree_3_type = col_character(),
-                       grad_1_degree_3_college = col_character(),
-                       grad_1_degree_3_major = col_character(),
-                       grad_1_degree_4_type = col_character(),
-                       grad_1_degree_4_college = col_character(),
-                       grad_1_degree_4_major = col_character(),
-                       grad_1_degree_5_type = col_character(),
-                       grad_1_degree_5_college = col_character(),
-                       grad_1_degree_5_major = col_character(),
-                       grad_2_academic_period = col_integer(),
-                       grad_2_overall_gpa = col_double(),
-                       grad_2_overall_credits_earned = col_double(),
-                       grad_2_fed_loan_amount_not_parent = col_double(),
-                       grad_2_fed_parent_loan_amount = col_double(),
-                       grad_2_degree_1_type = col_character(),
-                       grad_2_degree_1_college = col_character(),
-                       grad_2_degree_1_major = col_character(),
-                       grad_2_degree_2_type = col_character(),
-                       grad_2_degree_2_college = col_character(),
-                       grad_2_degree_2_major = col_character(),
-                       grad_2_degree_3_type = col_character(),
-                       grad_2_degree_3_college = col_character(),
-                       grad_2_degree_3_major = col_character(),
-                       grad_3_academic_period = col_integer(),
-                       grad_3_overall_gpa = col_double(),
-                       grad_3_overall_credits_earned = col_double(),
-                       grad_3_fed_loan_amount_not_parent = col_double(),
-                       grad_3_fed_parent_loan_amount = col_double(),
-                       grad_3_degree_1_type = col_character(),
-                       grad_3_degree_1_college = col_character(),
-                       grad_3_degree_1_major = col_character(),
-                       pell_efc = col_double(),
+                       graduated_flag = col_logical(),
+                       associate_1_grad = col_integer(),
+                       associate_1_overall_gpa = col_double(),
+                       associate_1_overall_credits_earned = col_double(),
+                       bach_1_grad = col_integer(),
+                       bach_1_overall_gpa = col_double(),
+                       bach_1_overall_credits_earned = col_double(),
+                       #grad_1_fed_loan_amount_not_parent = col_double(),
+                       #grad_1_fed_parent_loan_amount = col_double(),
+                       #grad_1_degree_1_type = col_character(),
+                       #grad_1_degree_1_college = col_character(),
+                       #grad_1_degree_1_major = col_character(),
+                       #grad_1_degree_2_type = col_character(),
+                       #grad_1_degree_2_college = col_character(),
+                       #grad_1_degree_2_major = col_character(),
+                       #grad_1_degree_3_type = col_character(),
+                       #grad_1_degree_3_college = col_character(),
+                       #grad_1_degree_3_major = col_character(),
+                       #grad_1_degree_4_type = col_character(),
+                       #grad_1_degree_4_college = col_character(),
+                       #grad_1_degree_4_major = col_character(),
+                       #grad_1_degree_5_type = col_character(),
+                       #grad_1_degree_5_college = col_character(),
+                       #grad_1_degree_5_major = col_character(),
+                       bach_2_grad = col_integer(),
+                       bach_2_overall_gpa = col_double(),
+                       bach_2_overall_credits_earned = col_double(),
+                       #grad_2_fed_loan_amount_not_parent = col_double(),
+                       #grad_2_fed_parent_loan_amount = col_double(),
+                       #grad_2_degree_1_type = col_character(),
+                       #grad_2_degree_1_college = col_character(),
+                       #grad_2_degree_1_major = col_character(),
+                       #grad_2_degree_2_type = col_character(),
+                       #grad_2_degree_2_college = col_character(),
+                       #grad_2_degree_2_major = col_character(),
+                       #grad_2_degree_3_type = col_character(),
+                       #grad_2_degree_3_college = col_character(),
+                       #grad_2_degree_3_major = col_character(),
+                       bach_3_grad = col_integer(),
+                       bach_3_overall_gpa = col_double(),
+                       bach_3_overall_credits_earned = col_double(),
+                       #grad_3_fed_loan_amount_not_parent = col_double(),
+                       #grad_3_fed_parent_loan_amount = col_double(),
+                       #grad_3_degree_1_type = col_character(),
+                       #grad_3_degree_1_college = col_character(),
+                       #grad_3_degree_1_major = col_character(),
+                       #pell_efc = col_double(),
                        percent_semesters_with_payment_plan = col_double(),
                        county_desc = col_character(),
                        nation_of_citizenship_desc = col_character(),
@@ -227,7 +446,12 @@ students <- read_csv("one_student_one_row_de_identified.csv",
                        military_veteran_flag = col_logical(),
                        military_family_flag = col_logical(),
                        wiepgroup_mentoring_flag = col_logical(),
-                       wieppair_mentoring_flag = col_logical()))
+                       wieppair_mentoring_flag = col_logical(),
+                       reason_for_leaving = col_character(),
+                       overall_gpa_when_leaving = col_double(),
+                       one_year_overall_gpa = col_double(),
+                       one_year_credits_attempted = col_double(),
+                       one_year_credits_earned = col_double()))
 
 students$profile_firstime_fulltime_ind <- yes_one_no_zero(students$profile_firstime_fulltime_ind)
 students$profile_underrep_minority_ind <- yes_one_no_zero(students$profile_underrep_minority_ind)
@@ -235,6 +459,12 @@ students$profile_underrep_minority_ind <- yes_one_no_zero(students$profile_under
 students$profile_gender_desc[students$profile_gender_desc=="Female"] <- 0
 students$profile_gender_desc[students$profile_gender_desc=="Male"] <- 1
 students$profile_gender_desc <- as.logical(as.numeric(students$profile_gender_desc))
+
+# Replace NAs with zeros for relevant variables
+students$percent_semesters_with_payment_plan <- nas_to_zeros(students$percent_semesters_with_payment_plan)
+students$incoming_credits_flag <- nas_to_zeros(students$incoming_credits_flag)
+students$mep_academic_boot_camp <- nas_to_zeros(students$mep_academic_boot_camp)
+students$si_count <- nas_to_zeros(students$si_count)
 
 # Import concordance tables for ACT to new SAT and old SAT to new SAT
 ACT_to_SAT_new <- read_excel("SAT_ACT_concordance.xlsx", 
@@ -246,13 +476,13 @@ SAT_old_M_to_SAT_new_M <- read_excel("SAT_ACT_concordance.xlsx",
 
 # Filter for first-time full-time students and select columns of interest
 students_test_scores <- students %>%
-  select(puid, citizenship_desc, profile_academic_period, grad_1_overall_gpa, 
+  select(hashed_puid, citizenship_desc, profile_academic_period, bach_1_overall_gpa, 
          profile_highest_act_composite, profile_sat_total, profile_highest_sat_crit_read, 
          profile_highest_sat_math, profile_highest_sat_writing)
 
 # Rename ACT composite and SAT total columns for merging purposes
-colnames(students_test_scores) <- c("puid", "citizenship_desc", "profile_academic_period", 
-                             "grad_1_overall_gpa", "ACT_composite", "SAT_old", 
+colnames(students_test_scores) <- c("hashed_puid", "citizenship_desc", "profile_academic_period", 
+                             "bach_1_overall_gpa", "ACT_composite", "SAT_old", 
                              "profile_highest_sat_crit_read", "SAT_old_Math", 
                              "profile_highest_sat_writing")
 
@@ -290,9 +520,9 @@ students_test_scores_equated <- rbind(SAT_new, ACT_all, no_test_all)
 
 # Add coloumn to student data with equated concordance scores
 concordance_scores <- students_test_scores_equated %>% 
-  select(puid, SAT_new)
+  select(hashed_puid, SAT_new)
 students <- students %>% 
-  left_join(concordance_scores, by="puid")
+  left_join(concordance_scores, by="hashed_puid")
 
 # Split academic period description into a column for term (Fall or Spring) and year
 term <- str_split_fixed(students$profile_academic_period_desc, " ", 2)
@@ -303,9 +533,55 @@ students <- cbind(students, term)
 students_complete <- students %>% 
   filter(profile_academic_period<=201410)
 
+# Impute retention and graudation information
+student_outcomes <- students_complete %>% 
+  select(one_year_retention_flag:six_year_graduation_flag)
+
+ind_1 <- student_outcomes$two_year_retention_flag > student_outcomes$one_year_retention_flag
+ind_2 <- student_outcomes$three_year_retention_flag > student_outcomes$two_year_retention_flag
+ind_3 <- student_outcomes$three_year_graduation_flag > student_outcomes$four_year_graduation_flag
+ind_4 <- student_outcomes$four_year_graduation_flag > student_outcomes$five_year_graduation_flag
+ind_5 <- student_outcomes$five_year_graduation_flag > student_outcomes$six_year_graduation_flag
+
+students_complete[ind_1,"one_year_retention_flag"] <- TRUE
+students_complete[ind_2,"one_year_retention_flag"] <- TRUE
+students_complete[ind_2,"two_year_retention_flag"] <- TRUE
+students_complete[ind_3,"four_year_graduation_flag"] <- TRUE
+students_complete[ind_3,"five_year_graduation_flag"] <- TRUE
+students_complete[ind_3,"six_year_graduation_flag"] <- TRUE
+students_complete[ind_4,"five_year_graduation_flag"] <- TRUE
+students_complete[ind_4,"six_year_graduation_flag"] <- TRUE
+students_complete[ind_5,"six_year_graduation_flag"] <- TRUE
+
+# Create a list of demographic variables as character strings
+demographic_vars <- list("profile_firstime_fulltime_ind",
+                         "profile_gender_desc",
+                         "profile_reporting_ethnicity",
+                         "profile_residence_desc",
+                         "profile_underrep_minority_ind",
+                         "first_gen_flag",
+                         "first_year_first_gen_flag",
+                         "citizenship_desc")
+# Create a list of demographic variables as names for sending to functions
+demographic_names <- map(demographic_vars, as.name)
+
+students_pop <- students_complete %>% 
+  select(profile_gender_desc, profile_reporting_ethnicity, profile_underrep_minority_ind, first_gen_flag)
+students_pop$profile_gender_desc <- replace(students_pop$profile_gender_desc, students_pop$profile_gender_desc==FALSE,"Female")
+students_pop$profile_gender_desc <- replace(students_pop$profile_gender_desc, students_pop$profile_gender_desc==TRUE,"Male")
+students_pop$profile_underrep_minority_ind <- replace(students_pop$profile_underrep_minority_ind, students_pop$profile_underrep_minority_ind==FALSE,"No")
+students_pop$profile_underrep_minority_ind <- replace(students_pop$profile_underrep_minority_ind, students_pop$profile_underrep_minority_ind==TRUE,"Yes")
+students_pop$first_gen_flag <- replace(students_pop$first_gen_flag, students_pop$first_gen_flag==FALSE,"No")
+students_pop$first_gen_flag <- replace(students_pop$first_gen_flag, students_pop$first_gen_flag==TRUE,"Yes")
+colnames(students_pop) <- c("Gender","Ethnicity","URM","First-generation")
 ```
 
-For students enrolled in Fall 2013 or earlier, the following tables summarize retention and graduation rates.
+<p style="font-size:14pt"; font-style:bold>
+Retention and graduation percentages for students enrolled in Fall 2013 or earlier are summarized in the following tables.
+</p>
+
+Note: Population breakdowns are given for first-time full-time students
+Note: Bar charts and line charts are for all students
 
 ```{r overall-results, echo=FALSE}
 # Summarize overall retention and graduation information
@@ -323,439 +599,293 @@ res.overall <- students_complete %>%
             "% 4 year graduation"=mean(four_year_graduation_flag),
             "% 5 year graduation"=mean(five_year_graduation_flag),
             "% 6 year graduation"=mean(six_year_graduation_flag))
-kable(res.overall, digits = 3, caption = "Overall Results")
+kable(res.overall, digits = 3, caption = "Overall Outcomes")
 ```
 
-```{r ftft-results, echo=FALSE}
-# Summarize first-time full-time retention and graduation information
-res.ftft <- students_complete %>% 
-  group_by(profile_firstime_fulltime_ind) %>% 
-  summarise("N"=n(),
-            "% first-time full-time"=mean(profile_firstime_fulltime_ind),
-            "% first-year first-generation"=mean(first_year_first_gen_flag),
-            "% first- generation"=mean(first_gen_flag),
-            "Mean SAT"=mean(SAT_new, na.rm = TRUE),
-            "SD SAT"=sd(SAT_new, na.rm = TRUE),
-            "% 1 year retention"=mean(one_year_retention_flag),
-            "% 2 year retention"=mean(two_year_retention_flag),
-            "% 3 year retention"=mean(three_year_retention_flag),
-            "% 3 year graduation"=mean(three_year_graduation_flag),
-            "% 4 year graduation"=mean(four_year_graduation_flag),
-            "% 5 year graduation"=mean(five_year_graduation_flag),
-            "% 6 year graduation"=mean(six_year_graduation_flag))
-colnames(res.ftft)[1] <- "First-time Full-time"
-res.ftft$`First-time Full-time` <- c("No", "Yes")
-kable(res.ftft, digits = 3, caption = "First-time Full-time Results")
-ret_grad_plots(students_complete, dem = "profile_firstime_fulltime_ind", time = "profile_academic_period_desc")
+```{r all-results, echo=FALSE}
+# Call retention_graduation_results() to create tables and graphs for each demographic variable
+results_demographics_all <- map(demographic_names, retention_graduation_results, df = students_complete)
+students_complete_ftft <- students_complete %>% 
+  filter(profile_firstime_fulltime_ind == TRUE)
+results_demographics_ftft <- map(demographic_names, retention_graduation_results, df = students_complete_ftft)
+
+# Summarize retention and graduation information by start semester 
+results_term_ftft <- retention_graduation_results_term(students_complete, TRUE)
+results_term_no_ftft <- retention_graduation_results_term(students_complete, FALSE)
+
+# Summarize population breakdowns
+results_population_ftft <- population_breakdown(students_complete, TRUE)
+results_population_no_ftft <- population_breakdown(students_complete, FALSE)
 ```
 
-```{r gender-results, echo=FALSE}
-# Summarize first-time full-time retention and graduation information
-res.gender <- students_complete %>% 
-  group_by(profile_gender_desc) %>% 
-  summarise("N"=n(),
-            "% first-time full-time"=mean(profile_firstime_fulltime_ind),
-            "% first-year first-generation"=mean(first_year_first_gen_flag),
-            "% first- generation"=mean(first_gen_flag),
-            "Mean SAT"=mean(SAT_new, na.rm = TRUE),
-            "SD SAT"=sd(SAT_new, na.rm = TRUE),
-            "% 1 year retention"=mean(one_year_retention_flag),
-            "% 2 year retention"=mean(two_year_retention_flag),
-            "% 3 year retention"=mean(three_year_retention_flag),
-            "% 3 year graduation"=mean(three_year_graduation_flag),
-            "% 4 year graduation"=mean(four_year_graduation_flag),
-            "% 5 year graduation"=mean(five_year_graduation_flag),
-            "% 6 year graduation"=mean(six_year_graduation_flag))
-colnames(res.gender)[1] <- "Gender"
-res.gender$Gender <- c("Female", "Male")
-kable(res.gender, digits = 3, caption = "Gender Results")
-ret_grad_plots(students_complete, dem = "profile_gender_desc", time = "profile_academic_period_desc")
+<p style="font-size:14pt; font-style:bold">
+Starting Term
+</p>
+
+```{r term-results, echo=FALSE}
+kable(results_term_ftft[[1]], digits = 3, caption = "Start Term")
+results_term_ftft[[2]]
+results_term_ftft[[3]]
+results_term_ftft[[4]]
 ```
 
-```{r ethnicity-results, echo=FALSE}
-# Summarize first-time full-time retention and graduation information
-res.ethnicity <- students_complete %>% 
-  group_by(profile_reporting_ethnicity) %>% 
-  summarise("N"=n(),
-            "% first-time full-time"=mean(profile_firstime_fulltime_ind),
-            "% first-year first-generation"=mean(first_year_first_gen_flag),
-            "% first- generation"=mean(first_gen_flag),
-            "Mean SAT"=mean(SAT_new, na.rm = TRUE),
-            "SD SAT"=sd(SAT_new, na.rm = TRUE),
-            "% 1 year retention"=mean(one_year_retention_flag),
-            "% 2 year retention"=mean(two_year_retention_flag),
-            "% 3 year retention"=mean(three_year_retention_flag),
-            "% 3 year graduation"=mean(three_year_graduation_flag),
-            "% 4 year graduation"=mean(four_year_graduation_flag),
-            "% 5 year graduation"=mean(five_year_graduation_flag),
-            "% 6 year graduation"=mean(six_year_graduation_flag))
-colnames(res.ethnicity)[1] <- "Ethnicity/Race"
-kable(res.ethnicity, digits = 3, caption = "Ethnicity Results")
-ret_grad_plots(students_complete, dem = "profile_reporting_ethnicity", time = "profile_academic_period_desc")
-```
-
-```{r residency-results, echo=FALSE}
-# Summarize residency retention and graduation information
-res.residency <- students_complete %>% 
-  group_by(profile_residence_desc) %>% 
-  summarise("N"=n(),
-            "% first-time full-time"=mean(profile_firstime_fulltime_ind),
-            "% first-year first-generation"=mean(first_year_first_gen_flag),
-            "% first- generation"=mean(first_gen_flag),
-            "Mean SAT"=mean(SAT_new, na.rm = TRUE),
-            "SD SAT"=sd(SAT_new, na.rm = TRUE),
-            "% 1 year retention"=mean(one_year_retention_flag),
-            "% 2 year retention"=mean(two_year_retention_flag),
-            "% 3 year retention"=mean(three_year_retention_flag),
-            "% 3 year graduation"=mean(three_year_graduation_flag),
-            "% 4 year graduation"=mean(four_year_graduation_flag),
-            "% 5 year graduation"=mean(five_year_graduation_flag),
-            "% 6 year graduation"=mean(six_year_graduation_flag))
-colnames(res.residency)[1] <- "Residency"
-kable(res.residency, digits = 3, caption = "Residency Results")
-ret_grad_plots(students_complete, dem = "profile_residence_desc", time = "profile_academic_period_desc")
-```
+<p style="font-size:14pt; font-style:bold">
+Minoritized Students
+</p>
 
 ```{r URM-results, echo=FALSE}
-# Summarize URM retention and graduation information
-res.URM <- students_complete %>% 
-  group_by(profile_underrep_minority_ind) %>% 
-  summarise("N"=n(),
-            "% first-time full-time"=mean(profile_firstime_fulltime_ind),
-            "% first-year first-generation"=mean(first_year_first_gen_flag),
-            "% first- generation"=mean(first_gen_flag),
-            "Mean SAT"=mean(SAT_new, na.rm = TRUE),
-            "SD SAT"=sd(SAT_new, na.rm = TRUE),
-            "% 1 year retention"=mean(one_year_retention_flag),
-            "% 2 year retention"=mean(two_year_retention_flag),
-            "% 3 year retention"=mean(three_year_retention_flag),
-            "% 3 year graduation"=mean(three_year_graduation_flag),
-            "% 4 year graduation"=mean(four_year_graduation_flag),
-            "% 5 year graduation"=mean(five_year_graduation_flag),
-            "% 6 year graduation"=mean(six_year_graduation_flag))
-colnames(res.URM)[1] <- "Minoritized Student"
-res.URM$`Minoritized Student` <- c("No", "Yes")
-kable(res.URM, digits = 3, caption = "URM Results")
-ret_grad_plots(students_complete, dem = "profile_underrep_minority_ind", time = "profile_academic_period_desc")
+# Minoritized students results
+colnames(results_demographics_all[[5]][[1]])[1] <- "Minoritized Students"
+results_demographics_all[[5]][[1]][1] <- c("No", "Yes")
+kable(results_demographics_all[[5]][[1]], digits = 3, caption = "Minoritized Students Outcomes")
+
+colnames(results_population_ftft[[1]])[1] <- "Minoritized Students"
+colnames(results_population_ftft[[1]])[2] <- "Gender"
+results_population_ftft[[1]][1] <- replace(results_population_ftft[[1]][1], results_population_ftft[[1]][1]==TRUE, "Yes")
+results_population_ftft[[1]][1] <- replace(results_population_ftft[[1]][1], results_population_ftft[[1]][1]==FALSE, "No")
+results_population_ftft[[1]][2] <- replace(results_population_ftft[[1]][2], results_population_ftft[[1]][2]==TRUE, "Male")
+results_population_ftft[[1]][2] <- replace(results_population_ftft[[1]][2], results_population_ftft[[1]][2]==FALSE, "Female")
+kable(results_population_ftft[[1]], digits = 3, caption = "Minoritized Students Population Breakdown")
+
+colnames(results_population_ftft[[2]])[1] <- "Minoritized Students"
+colnames(results_population_ftft[[2]])[2] <- "Gender"
+colnames(results_population_ftft[[2]])[3] <- "First-Generation"
+results_population_ftft[[2]][1] <- replace(results_population_ftft[[2]][1], results_population_ftft[[2]][1]==TRUE, "Yes")
+results_population_ftft[[2]][1] <- replace(results_population_ftft[[2]][1], results_population_ftft[[2]][1]==FALSE, "No")
+results_population_ftft[[2]][2] <- replace(results_population_ftft[[2]][2], results_population_ftft[[2]][2]==TRUE, "Male")
+results_population_ftft[[2]][2] <- replace(results_population_ftft[[2]][2], results_population_ftft[[2]][2]==FALSE, "Female")
+results_population_ftft[[2]][3] <- replace(results_population_ftft[[2]][3], results_population_ftft[[2]][3]==TRUE, "Yes")
+results_population_ftft[[2]][3] <- replace(results_population_ftft[[2]][3], results_population_ftft[[2]][3]==FALSE, "No")
+kable(results_population_ftft[[2]], digits = 3, caption = "Minoritized Students Population Breakdown")
+
+results_demographics_all[[5]][[2]]
+
+colnames(results_population_ftft[[3]])[2] <- "Minoritized Students"
+results_population_ftft[[3]][2] <- replace(results_population_ftft[[3]][2], results_population_ftft[[3]][2]==TRUE, "Yes")
+results_population_ftft[[3]][2] <- replace(results_population_ftft[[3]][2], results_population_ftft[[3]][2]==FALSE, "No")
+kable(results_population_ftft[[3]], digits = 3, caption = "Minoritized Students Population Breakdown by Starting Semester")
+
+results_demographics_all[[5]][[3]]
+results_demographics_all[[5]][[4]]
 ```
 
-```{r athlete-results, echo=FALSE}
-# Summarize athlete retention and graduation information
-res.athlete <- students_complete %>% 
-  group_by(athlete_flag) %>% 
-  summarise("N"=n(),
-            "% first-time full-time"=mean(profile_firstime_fulltime_ind),
-            "% first-year first-generation"=mean(first_year_first_gen_flag),
-            "% first- generation"=mean(first_gen_flag),
-            "Mean SAT"=mean(SAT_new, na.rm = TRUE),
-            "SD SAT"=sd(SAT_new, na.rm = TRUE),
-            "% 1 year retention"=mean(one_year_retention_flag),
-            "% 2 year retention"=mean(two_year_retention_flag),
-            "% 3 year retention"=mean(three_year_retention_flag),
-            "% 3 year graduation"=mean(three_year_graduation_flag),
-            "% 4 year graduation"=mean(four_year_graduation_flag),
-            "% 5 year graduation"=mean(five_year_graduation_flag),
-            "% 6 year graduation"=mean(six_year_graduation_flag))
-colnames(res.athlete)[1] <- "Athlete"
-res.athlete$Athlete <- c("No", "Yes")
-kable(res.athlete, digits = 3, caption = "Athlete Results")
-ret_grad_plots(students_complete, dem = "athlete_flag", time = "profile_academic_period_desc")
+<p style="font-size:14pt; font-style:bold">
+Ethnicity
+</p>
+
+```{r ethnicity-results, echo=FALSE}
+# Filter out small populations
+students_complete_ethnicity <- students_complete %>% 
+  filter(profile_reporting_ethnicity == "Asian" | profile_reporting_ethnicity == "Black or African American" | profile_reporting_ethnicity == "Hispanic/Latino" | profile_reporting_ethnicity == "International" | profile_reporting_ethnicity == "White")
+results_demographics_ethnicity <- retention_graduation_results(students_complete_ethnicity, profile_reporting_ethnicity)
+
+# Ethnicity results
+colnames(results_demographics_ethnicity[[1]])[1] <- "Ethnicity"
+kable(results_demographics_ethnicity[[1]], digits = 3, caption = "Ethnicity Outcomes")
+
+colnames(results_population_ftft[[4]])[1] <- "Ethnicity"
+colnames(results_population_ftft[[4]])[2] <- "Gender"
+results_population_ftft[[4]][2] <- replace(results_population_ftft[[4]][2], results_population_ftft[[4]][2]==TRUE, "Male")
+results_population_ftft[[4]][2] <- replace(results_population_ftft[[4]][2], results_population_ftft[[4]][2]==FALSE, "Female")
+kable(results_population_ftft[[4]], digits = 3, caption = "Ethnicity Population Breakdown")
+
+colnames(results_population_ftft[[5]])[1] <- "Ethnicity"
+colnames(results_population_ftft[[5]])[2] <- "Gender"
+colnames(results_population_ftft[[5]])[3] <- "First-Generation"
+results_population_ftft[[5]][2] <- replace(results_population_ftft[[5]][2], results_population_ftft[[5]][2]==TRUE, "Male")
+results_population_ftft[[5]][2] <- replace(results_population_ftft[[5]][2], results_population_ftft[[5]][2]==FALSE, "Female")
+results_population_ftft[[5]][3] <- replace(results_population_ftft[[5]][3], results_population_ftft[[5]][3]==TRUE, "Yes")
+results_population_ftft[[5]][3] <- replace(results_population_ftft[[5]][3], results_population_ftft[[5]][3]==FALSE, "No")
+kable(results_population_ftft[[5]], digits = 3, caption = "Ethnicity Population Breakdown")
+
+results_demographics_ethnicity[[2]]
+
+colnames(results_population_ftft[[6]])[2] <- "Ethnicity"
+kable(results_population_ftft[[6]], digits = 3, caption = "Ethnicity Population Breakdown by Starting Semester")
+
+results_demographics_ethnicity[[3]]
+results_demographics_ethnicity[[4]]
 ```
+
+<p style="font-size:14pt; font-style:bold">
+First-Generation
+</p>
 
 ```{r fgen-results, echo=FALSE}
-# Summarize first-generation retention and graduation information
-res.fgen <- students_complete %>% 
-  group_by(first_gen_flag) %>% 
-  summarise("N"=n(),
-            "% first-time full-time"=mean(profile_firstime_fulltime_ind),
-            "% first-year first-generation"=mean(first_year_first_gen_flag),
-            "% first- generation"=mean(first_gen_flag),
-            "Mean SAT"=mean(SAT_new, na.rm = TRUE),
-            "SD SAT"=sd(SAT_new, na.rm = TRUE),
-            "% 1 year retention"=mean(one_year_retention_flag),
-            "% 2 year retention"=mean(two_year_retention_flag),
-            "% 3 year retention"=mean(three_year_retention_flag),
-            "% 3 year graduation"=mean(three_year_graduation_flag),
-            "% 4 year graduation"=mean(four_year_graduation_flag),
-            "% 5 year graduation"=mean(five_year_graduation_flag),
-            "% 6 year graduation"=mean(six_year_graduation_flag))
-colnames(res.fgen)[1] <- "First-generation"
-res.fgen$`First-generation` <- c("No", "Yes")
-kable(res.fgen, digits = 3, caption = "First-generation Results")
-ret_grad_plots(students_complete, dem = "first_gen_flag", time = "profile_academic_period_desc")
+# First-generation results
+colnames(results_demographics_all[[6]][[1]])[1] <- "First-Generation"
+results_demographics_all[[6]][[1]][1] <- c("No", "Yes")
+kable(results_demographics_all[[6]][[1]], digits = 3, caption = "First-Generation Outcomes")
+
+colnames(results_population_ftft[[7]])[1] <- "First-Generation"
+colnames(results_population_ftft[[7]])[2] <- "URM"
+results_population_ftft[[7]][1] <- replace(results_population_ftft[[7]][1], results_population_ftft[[7]][1]==TRUE, "Yes")
+results_population_ftft[[7]][1] <- replace(results_population_ftft[[7]][1], results_population_ftft[[7]][1]==FALSE, "No")
+results_population_ftft[[7]][2] <- replace(results_population_ftft[[7]][2], results_population_ftft[[7]][2]==TRUE, "Yes")
+results_population_ftft[[7]][2] <- replace(results_population_ftft[[7]][2], results_population_ftft[[7]][2]==FALSE, "No")
+kable(results_population_ftft[[7]], digits = 3, caption = "First-Generation Population Breakdown")
+
+colnames(results_population_ftft[[8]])[1] <- "First-Generation"
+colnames(results_population_ftft[[8]])[2] <- "Ethnicity"
+results_population_ftft[[8]][1] <- replace(results_population_ftft[[8]][1], results_population_ftft[[8]][1]==TRUE, "Yes")
+results_population_ftft[[8]][1] <- replace(results_population_ftft[[8]][1], results_population_ftft[[8]][1]==FALSE, "No")
+kable(results_population_ftft[[8]], digits = 3, caption = "First-Generation Population Breakdown")
+
+colnames(results_population_ftft[[9]])[2] <- "First-Generation"
+colnames(results_population_ftft[[9]])[2] <- "Gender"
+results_population_ftft[[9]][1] <- replace(results_population_ftft[[9]][1], results_population_ftft[[9]][1]==TRUE, "Yes")
+results_population_ftft[[9]][1] <- replace(results_population_ftft[[9]][1], results_population_ftft[[9]][1]==FALSE, "No")
+results_population_ftft[[9]][2] <- replace(results_population_ftft[[9]][2], results_population_ftft[[9]][2]==TRUE, "Male")
+results_population_ftft[[9]][2] <- replace(results_population_ftft[[9]][2], results_population_ftft[[9]][2]==FALSE, "Female")
+kable(results_population_ftft[[9]], digits = 3, caption = "First-Generation Population Breakdown by Starting Semester")
+
+results_demographics_all[[6]][[2]]
+
+colnames(results_population_ftft[[10]])[2] <- "First-Generation"
+results_population_ftft[[10]][2] <- replace(results_population_ftft[[10]][2], results_population_ftft[[10]][2]==TRUE, "Yes")
+results_population_ftft[[10]][2] <- replace(results_population_ftft[[10]][2], results_population_ftft[[10]][2]==FALSE, "No")
+kable(results_population_ftft[[10]], digits = 3, caption = "First-Generation Population Breakdown by Starting Semester")
+
+results_demographics_all[[6]][[3]]
+results_demographics_all[[6]][[4]]
 ```
 
-```{r fyfgen-results, echo=FALSE}
-# Summarize first-year first-generation retention and graduation information
-res.fyfgen <- students_complete %>% 
-  group_by(first_year_first_gen_flag) %>% 
-  summarise("N"=n(),
-            "% first-time full-time"=mean(profile_firstime_fulltime_ind),
-            "% first-year first-generation"=mean(first_year_first_gen_flag),
-            "% first- generation"=mean(first_gen_flag),
-            "Mean SAT"=mean(SAT_new, na.rm = TRUE),
-            "SD SAT"=sd(SAT_new, na.rm = TRUE),
-            "% 1 year retention"=mean(one_year_retention_flag),
-            "% 2 year retention"=mean(two_year_retention_flag),
-            "% 3 year retention"=mean(three_year_retention_flag),
-            "% 3 year graduation"=mean(three_year_graduation_flag),
-            "% 4 year graduation"=mean(four_year_graduation_flag),
-            "% 5 year graduation"=mean(five_year_graduation_flag),
-            "% 6 year graduation"=mean(six_year_graduation_flag))
-colnames(res.fyfgen)[1] <- "First-year First-generation"
-res.fyfgen$`First-year First-generation` <- c("No", "Yes")
-kable(res.fyfgen, digits = 3, caption = "First-year First-generation Results")
-ret_grad_plots(students_complete, dem = "first_year_first_gen_flag", time = "profile_academic_period_desc")
+```{r demographic-results, include=FALSE}
+# Call retention_graduation_results() to create tables and graphs for each demographic variable
+results <- map(demographic_names, retention_graduation_results, df = students_complete)
+# results_population_ftft <- population_breakdown(students_complete, TRUE)
+# results_population_no_ftft <- population_breakdown(students_complete, FALSE)
+
+# First-time Full-time results
+colnames(results[[1]][[1]])[1] <- "First-time Full-time"
+results[[1]][[1]][1] <- c("No", "Yes")
+kable(results[[1]][[1]], digits = 3, caption = "First-time Full-time Results")
+results[[1]][[2]]
+results[[1]][[3]]
+results[[1]][[4]]
+
+# Gender results
+colnames(results[[2]][[1]])[1] <- "Gender"
+results[[2]][[1]][1] <- c("Female", "Male")
+kable(results[[2]][[1]], digits = 3, caption = "Gender")
+results[[2]][[2]]
+results[[2]][[3]]
+results[[2]][[4]]
+
+# Ethnicity results
+colnames(results[[3]][[1]])[1] <- "Ethnicity"
+kable(results[[3]][[1]], digits = 3, caption = "Ethnicity")
+results[[3]][[2]]
+results[[3]][[3]]
+results[[3]][[4]]
+
+# Residency results
+kable(results_population_ftft[[3]], digits = 3)
+colnames(results[[4]][[1]])[1] <- "Residency"
+kable(results[[4]][[1]], digits = 3, caption = "Residency")
+results[[4]][[2]]
+results[[4]][[3]]
+results[[4]][[4]]
+
+# First-generation results
+kable(results_population_ftft[[4]], digits = 3)
+colnames(results[[6]][[1]])[1] <- "First-generation"
+results[[6]][[1]][1] <- c("No", "Yes")
+kable(results[[6]][[1]], digits = 3, caption = "First-generation")
+results[[6]][[2]]
+results[[6]][[3]]
+results[[6]][[4]]
+
+# First-year First-generation results
+colnames(results[[7]][[1]])[1] <- "First-year First-generation"
+results[[7]][[1]][1] <- c("No", "Yes")
+kable(results[[7]][[1]], digits = 3, caption = "First-year First-generation")
+results[[7]][[2]]
+results[[7]][[3]]
+results[[7]][[4]]
+
+# Citizenship results
+colnames(results[[8]][[1]])[1] <- "Citizenship"
+kable(results[[8]][[1]], digits = 3, caption = "Citizenship")
+results[[8]][[2]]
+results[[8]][[3]]
+results[[8]][[4]]
 ```
 
-```{r citizenship-results, echo=FALSE}
-# Summarize citizenship retention and graduation information
-res.citizenship <- students_complete %>% 
-  group_by(citizenship_desc) %>% 
-  summarise("N"=n(),
-            "% first-time full-time"=mean(profile_firstime_fulltime_ind),
-            "% first-year first-generation"=mean(first_year_first_gen_flag),
-            "% first- generation"=mean(first_gen_flag),
-            "Mean SAT"=mean(SAT_new, na.rm = TRUE),
-            "SD SAT"=sd(SAT_new, na.rm = TRUE),
-            "% 1 year retention"=mean(one_year_retention_flag),
-            "% 2 year retention"=mean(two_year_retention_flag),
-            "% 3 year retention"=mean(three_year_retention_flag),
-            "% 3 year graduation"=mean(three_year_graduation_flag),
-            "% 4 year graduation"=mean(four_year_graduation_flag),
-            "% 5 year graduation"=mean(five_year_graduation_flag),
-            "% 6 year graduation"=mean(six_year_graduation_flag))
-colnames(res.citizenship)[1] <- "Citizenship"
-kable(res.citizenship, digits = 3, caption = "Citizenship Results")
-ret_grad_plots(students_complete, dem = "citizenship_desc", time = "profile_academic_period_desc")
-```
+```{r regression, echo=FALSE}
+# Regression models for MSP
+regression_models_1 <- students_complete %>%
+  split(.$profile_reporting_ethnicity) %>%
+  map(~lm(one_year_overall_gpa ~ SAT_new, data = .))
 
-```{r lgbtq-results, echo=FALSE}
-# Summarize LGBTQ retention and graduation information
-res.lgbtq <- students_complete %>% 
-  group_by(lgbtq_flag) %>% 
-  summarise("N"=n(),
-            "% first-time full-time"=mean(profile_firstime_fulltime_ind),
-            "% first-year first-generation"=mean(first_year_first_gen_flag),
-            "% first- generation"=mean(first_gen_flag),
-            "Mean SAT"=mean(SAT_new, na.rm = TRUE),
-            "SD SAT"=sd(SAT_new, na.rm = TRUE),
-            "% 1 year retention"=mean(one_year_retention_flag),
-            "% 2 year retention"=mean(two_year_retention_flag),
-            "% 3 year retention"=mean(three_year_retention_flag),
-            "% 3 year graduation"=mean(three_year_graduation_flag),
-            "% 4 year graduation"=mean(four_year_graduation_flag),
-            "% 5 year graduation"=mean(five_year_graduation_flag),
-            "% 6 year graduation"=mean(six_year_graduation_flag))
-colnames(res.lgbtq)[1] <- "LGBTQ"
-res.lgbtq$LGBTQ <- c("Prefer not to answer", "No", "Yes", "Did not visit")
-kable(res.lgbtq, digits = 3, caption = "LGBTQ Results")
-students_complete$lgbtq_flag <- as.factor(students_complete$lgbtq_flag)
-ret_grad_plots(students_complete, dem = "lgbtq_flag", time = "profile_academic_period_desc")
-```
-
-```{r military-results, echo=FALSE}
-# Summarize military retention and graduation information
-res.military <- students_complete %>% 
-  group_by(military_active_flag) %>% 
-  summarise("N"=n(),
-            "% first-time full-time"=mean(profile_firstime_fulltime_ind),
-            "% first-year first-generation"=mean(first_year_first_gen_flag),
-            "% first- generation"=mean(first_gen_flag),
-            "Mean SAT"=mean(SAT_new, na.rm = TRUE),
-            "SD SAT"=sd(SAT_new, na.rm = TRUE),
-            "% 1 year retention"=mean(one_year_retention_flag),
-            "% 2 year retention"=mean(two_year_retention_flag),
-            "% 3 year retention"=mean(three_year_retention_flag),
-            "% 3 year graduation"=mean(three_year_graduation_flag),
-            "% 4 year graduation"=mean(four_year_graduation_flag),
-            "% 5 year graduation"=mean(five_year_graduation_flag),
-            "% 6 year graduation"=mean(six_year_graduation_flag))
-colnames(res.military)[1] <- "Military"
-res.military$Military <- c("No", "Yes")
-kable(res.military, digits = 3, caption = "Military Results")
-ret_grad_plots(students_complete, dem = "military_active_flag", time = "profile_academic_period_desc")
-```
-
-```{r veteran-results, echo=FALSE}
-# Summarize veteran retention and graduation information
-res.veteran <- students_complete %>% 
-  group_by(military_veteran_flag) %>% 
-  summarise("N"=n(),
-            "% first-time full-time"=mean(profile_firstime_fulltime_ind),
-            "% first-year first-generation"=mean(first_year_first_gen_flag),
-            "% first- generation"=mean(first_gen_flag),
-            "Mean SAT"=mean(SAT_new, na.rm = TRUE),
-            "SD SAT"=sd(SAT_new, na.rm = TRUE),
-            "% 1 year retention"=mean(one_year_retention_flag),
-            "% 2 year retention"=mean(two_year_retention_flag),
-            "% 3 year retention"=mean(three_year_retention_flag),
-            "% 3 year graduation"=mean(three_year_graduation_flag),
-            "% 4 year graduation"=mean(four_year_graduation_flag),
-            "% 5 year graduation"=mean(five_year_graduation_flag),
-            "% 6 year graduation"=mean(six_year_graduation_flag))
-colnames(res.veteran)[1] <- "Veteran"
-res.veteran$Veteran <- c("No", "Yes")
-kable(res.veteran, digits = 3, caption = "Veteran Results")
-ret_grad_plots(students_complete, dem = "military_veteran_flag", time = "profile_academic_period_desc")
-```
-
-```{r milfam-results, echo=FALSE}
-# Summarize military family retention and graduation information
-res.milfam <- students_complete %>% 
-  group_by(military_family_flag) %>% 
-  summarise("N"=n(),
-            "% first-time full-time"=mean(profile_firstime_fulltime_ind),
-            "% first-year first-generation"=mean(first_year_first_gen_flag),
-            "% first- generation"=mean(first_gen_flag),
-            "Mean SAT"=mean(SAT_new, na.rm = TRUE),
-            "SD SAT"=sd(SAT_new, na.rm = TRUE),
-            "% 1 year retention"=mean(one_year_retention_flag),
-            "% 2 year retention"=mean(two_year_retention_flag),
-            "% 3 year retention"=mean(three_year_retention_flag),
-            "% 3 year graduation"=mean(three_year_graduation_flag),
-            "% 4 year graduation"=mean(four_year_graduation_flag),
-            "% 5 year graduation"=mean(five_year_graduation_flag),
-            "% 6 year graduation"=mean(six_year_graduation_flag))
-colnames(res.milfam)[1] <- "Military Family"
-res.milfam$`Military Family` <- c("No", "Yes")
-kable(res.milfam, digits = 3, caption = "Military Family Results")
-ret_grad_plots(students_complete, dem = "military_family_flag", time = "profile_academic_period_desc")
-```
-
-```{r start-semester, echo=FALSE}
-# Summarize retention and graduation information by start semester
-res.start_sem <- students_complete %>% 
-  group_by(str_detect(profile_academic_period, "20$")) %>% 
-  summarise("N"=n(),
-            "% first-time full-time"=mean(profile_firstime_fulltime_ind),
-            "% first-year first-generation"=mean(first_year_first_gen_flag),
-            "% first- generation"=mean(first_gen_flag),
-            "Mean SAT"=mean(SAT_new, na.rm = TRUE),
-            "SD SAT"=sd(SAT_new, na.rm = TRUE),
-            "% 1 year retention"=mean(one_year_retention_flag),
-            "% 2 year retention"=mean(two_year_retention_flag),
-            "% 3 year retention"=mean(three_year_retention_flag),
-            "% 3 year graduation"=mean(three_year_graduation_flag),
-            "% 4 year graduation"=mean(four_year_graduation_flag),
-            "% 5 year graduation"=mean(five_year_graduation_flag),
-            "% 6 year graduation"=mean(six_year_graduation_flag))
-colnames(res.start_sem)[1] <- "Start Semester"
-res.start_sem$`Start Semester` <- c("Fall", "Spring")
-kable(res.start_sem, digits = 3, caption = "Start Semester Results")
-res.start_sem <- gather(res.start_sem, outcome, percentage, `% 1 year retention`:`% 6 year graduation`)
-ggplot(res.start_sem) +
-    geom_bar(aes(x = outcome, y = percentage, fill = `Start Semester`), stat = "identity", position = "dodge") +
-    scale_fill_hue(l=40) +
-    theme(axis.text.x = element_text(angle = 90, hjust = 1))
-
-# Summarize retention and graduation information by start semester
-# Results are for first-time full-time student only
-res.start_sem_ftft <- students_complete %>% 
-  group_by(str_detect(profile_academic_period, "20$")) %>% 
-  filter(profile_firstime_fulltime_ind==TRUE) %>% 
-  summarise("N"=n(),
-            "% first-time full-time"=mean(profile_firstime_fulltime_ind),
-            "% first-year first-generation"=mean(first_year_first_gen_flag),
-            "% first- generation"=mean(first_gen_flag),
-            "Mean SAT"=mean(SAT_new, na.rm = TRUE),
-            "SD SAT"=sd(SAT_new, na.rm = TRUE),
-            "% 1 year retention"=mean(one_year_retention_flag),
-            "% 2 year retention"=mean(two_year_retention_flag),
-            "% 3 year retention"=mean(three_year_retention_flag),
-            "% 3 year graduation"=mean(three_year_graduation_flag),
-            "% 4 year graduation"=mean(four_year_graduation_flag),
-            "% 5 year graduation"=mean(five_year_graduation_flag),
-            "% 6 year graduation"=mean(six_year_graduation_flag))
-colnames(res.start_sem_ftft)[1] <- "Start Semester"
-res.start_sem_ftft$`Start Semester` <- c("Fall", "Spring")
-kable(res.start_sem_ftft, digits = 3, caption = "Start Semester Results (First-time Full-time)")
-res.start_sem_ftft <- gather(res.start_sem_ftft, outcome, percentage, `% 1 year retention`:`% 6 year graduation`)
-ggplot(res.start_sem_ftft) +
-    geom_bar(aes(x = outcome, y = percentage, fill = `Start Semester`), stat = "identity", position = "dodge") +
-    scale_fill_hue(l=40) +
-    theme(axis.text.x = element_text(angle = 90, hjust = 1))
-  
-# Summarize retention and graduation information by start semester
-# Results are for each semester
-res.start <- students_complete %>% 
-  group_by(profile_academic_period_desc) %>% 
-  summarise("N"=n(),
-            "% first-time full-time"=mean(profile_firstime_fulltime_ind),
-            "% first-year first-generation"=mean(first_year_first_gen_flag),
-            "% first- generation"=mean(first_gen_flag),
-            "Mean SAT"=mean(SAT_new, na.rm = TRUE),
-            "SD SAT"=sd(SAT_new, na.rm = TRUE),
-            "% 1 year retention"=mean(one_year_retention_flag),
-            "% 2 year retention"=mean(two_year_retention_flag),
-            "% 3 year retention"=mean(three_year_retention_flag),
-            "% 3 year graduation"=mean(three_year_graduation_flag),
-            "% 4 year graduation"=mean(four_year_graduation_flag),
-            "% 5 year graduation"=mean(five_year_graduation_flag),
-            "% 6 year graduation"=mean(six_year_graduation_flag)) %>% 
-    separate(profile_academic_period_desc, c("Term","Year"))
-colnames(res.start)[1] <- "Start Semester"
-kable(res.start, digits = 3, caption = "Start Semester Results")
-ggplot(res.start, aes(x = Year, y = `% 1 year retention`)) +
-    geom_point(aes(group = `Start Semester`, color = `Start Semester`)) +
-    geom_line(aes(group = `Start Semester`, color = `Start Semester`)) +
-    #geom_errorbar(aes(ymin = `% 6 year\ngraduation`-`SD 6 year\ngraduation`, ymax = `% 6 year\ngraduation`+`SD 6 year\ngraduation`, width = 0.1)) +
-    scale_fill_hue(l=40)
-ggplot(res.start, aes(x = Year, y = `% 6 year graduation`)) +
-    geom_point(aes(group = `Start Semester`, color = `Start Semester`)) +
-    geom_line(aes(group = `Start Semester`, color = `Start Semester`)) +
-    #geom_errorbar(aes(ymin = `% 6 year\ngraduation`-`SD 6 year\ngraduation`, ymax = `% 6 year\ngraduation`+`SD 6 year\ngraduation`, width = 0.1)) +
-    scale_fill_hue(l=40)
-
-# Summarize retention and graduation information by start semester
-# Results are for each semester and first-time full-time student only
-res.start_ftft <- students_complete %>% 
-  group_by(profile_academic_period_desc) %>% 
-  filter(profile_firstime_fulltime_ind==TRUE) %>% 
-  summarise("N"=n(),
-            "% first-time full-time"=mean(profile_firstime_fulltime_ind),
-            "% first-year first-generation"=mean(first_year_first_gen_flag),
-            "% first- generation"=mean(first_gen_flag),
-            "Mean SAT"=mean(SAT_new, na.rm = TRUE),
-            "SD SAT"=sd(SAT_new, na.rm = TRUE),
-            "% 1 year retention"=mean(one_year_retention_flag),
-            "% 2 year retention"=mean(two_year_retention_flag),
-            "% 3 year retention"=mean(three_year_retention_flag),
-            "% 3 year graduation"=mean(three_year_graduation_flag),
-            "% 4 year graduation"=mean(four_year_graduation_flag),
-            "% 5 year graduation"=mean(five_year_graduation_flag),
-            "% 6 year graduation"=mean(six_year_graduation_flag)) %>% 
-    separate(profile_academic_period_desc, c("Term","Year"))
-colnames(res.start_ftft)[1] <- "Start Semester"
-kable(res.start_ftft, digits = 3, caption = "Start Semester Results (First-time Full-time)")
-ggplot(res.start_ftft, aes(x = Year, y = `% 1 year retention`)) +
-    geom_point(aes(group = `Start Semester`, color = `Start Semester`)) +
-    geom_line(aes(group = `Start Semester`, color = `Start Semester`)) +
-    #geom_errorbar(aes(ymin = `% 6 year\ngraduation`-`SD 6 year\ngraduation`, ymax = `% 6 year\ngraduation`+`SD 6 year\ngraduation`, width = 0.1)) +
-    scale_fill_hue(l=40)
-ggplot(res.start_ftft, aes(x = Year, y = `% 6 year graduation`)) +
-    geom_point(aes(group = `Start Semester`, color = `Start Semester`)) +
-    geom_line(aes(group = `Start Semester`, color = `Start Semester`)) +
-    #geom_errorbar(aes(ymin = `% 6 year\ngraduation`-`SD 6 year\ngraduation`, ymax = `% 6 year\ngraduation`+`SD 6 year\ngraduation`, width = 0.1)) +
-    scale_fill_hue(l=40)
-```
-
-Correlation results
-
-```{r}
-# Create a correlation matrix for numeric and logical variables
-log_data_students <- students_complete %>% select_if(is.logical)
-num_data_students <- students_complete %>% select_if(is.numeric)
-students_z <- cbind(log_data_students,num_data_students)
-students_r <- lowerCor(students_z)
-correlates <- list()
-  
-for(i in 1:ncol(students_r)){
-  variable <- colnames(students_r)[i]
-  ind <- students_r[,i]>0.2
-  #students_r[ind,i]
-  correlates[[variable]] <- students_r[ind,i]
+r_squared <- c(seq(1:9))
+betas <- data.frame(Ethnicity = names(regression_models_1), Intercept = 1:9, SAT = 1:9)
+for(i in 1:length(regression_models_1)){
+  r_squared[i] <- summary(regression_models_1[[i]])$r.squared
+  betas[i,2] <- summary(regression_models_1[[i]])$coefficients[[1]]
+  betas[i,3] <- summary(regression_models_1[[i]])$coefficients[[2]]
 }
-correlates
+kable(cbind(betas, r_squared), digits = 3, caption = "Regression Models Results by Ethnicity for SAT for GPA after one year")
+
+# Regression models for MSP
+regression_models <- students_complete %>%
+  split(.$profile_reporting_ethnicity) %>%
+  map(~lm(one_year_overall_gpa ~ SAT_new + profile_gender_desc, data = .))
+
+r_squared <- c(seq(1:9))
+betas <- data.frame(Ethnicity = names(regression_models), Intercept = 1:9, SAT = 1:9, Gender = 1:9)
+for(i in 1:length(regression_models)){
+  r_squared[i] <- summary(regression_models[[i]])$r.squared
+  betas[i,2] <- summary(regression_models[[i]])$coefficients[[1]]
+  betas[i,3] <- summary(regression_models[[i]])$coefficients[[2]]
+  betas[i,4] <- summary(regression_models[[i]])$coefficients[[3]]
+}
+kable(cbind(betas, r_squared), digits = 3, caption = "Regression Models Results by Ethnicity for SAT and Gender for GPA after one year")
+
+# Regression models for MSP
+regression_models_1 <- students_complete %>%
+  split(.$profile_reporting_ethnicity) %>%
+  map(~lm(overall_gpa_when_leaving ~ SAT_new, data = .))
+
+r_squared <- c(seq(1:9))
+betas <- data.frame(Ethnicity = names(regression_models_1), Intercept = 1:9, SAT = 1:9)
+for(i in 1:length(regression_models_1)){
+  r_squared[i] <- summary(regression_models_1[[i]])$r.squared
+  betas[i,2] <- summary(regression_models_1[[i]])$coefficients[[1]]
+  betas[i,3] <- summary(regression_models_1[[i]])$coefficients[[2]]
+}
+kable(cbind(betas, r_squared), digits = 3, caption = "Regression Models Results by Ethnicity for SAT for GPA when leaving")
+
+# Regression models for MSP
+regression_models <- students_complete %>%
+  split(.$profile_reporting_ethnicity) %>%
+  map(~lm(overall_gpa_when_leaving ~ SAT_new + profile_gender_desc, data = .))
+
+r_squared <- c(seq(1:9))
+betas <- data.frame(Ethnicity = names(regression_models), Intercept = 1:9, SAT = 1:9, Gender = 1:9)
+for(i in 1:length(regression_models)){
+  r_squared[i] <- summary(regression_models[[i]])$r.squared
+  betas[i,2] <- summary(regression_models[[i]])$coefficients[[1]]
+  betas[i,3] <- summary(regression_models[[i]])$coefficients[[2]]
+  betas[i,4] <- summary(regression_models[[i]])$coefficients[[3]]
+}
+kable(cbind(betas, r_squared), digits = 3, caption = "Regression Models Results by Ethnicity for SAT and Gender for GPA when leaving")
+```
+
+```{r, include=FALSE}
+# # Create a correlation matrix for numeric and logical variables
+# log_data_students <- students_complete %>% select_if(is.logical)
+# num_data_students <- students_complete %>% select_if(is.numeric)
+# students_z <- cbind(log_data_students,num_data_students)
+# students_r <- lowerCor(students_z)
+# correlates <- list()
+#   
+# for(i in 1:ncol(students_r)){
+#   variable <- colnames(students_r)[i]
+#   ind <- students_r[,i]>0.2
+#   #students_r[ind,i]
+#   correlates[[variable]] <- students_r[ind,i]
+# }
+# correlates
 ```
 
