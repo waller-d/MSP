@@ -25,15 +25,14 @@ SAT_old_M_to_SAT_new_M <- read_excel("SAT_ACT_concordance.xlsx",
 
 # Filter for first-time full-time students and select columns of interest
 students_test_scores <- students %>%
-  select(puid, citizenship_desc, profile_academic_period, grad_1_overall_gpa, 
+  select(hashed_puid, citizenship_desc, profile_academic_period, 
          profile_highest_act_composite, profile_sat_total, profile_highest_sat_crit_read, 
          profile_highest_sat_math, profile_highest_sat_writing)
 
 # Rename ACT composite and SAT total columns for merging purposes
-colnames(students_test_scores) <- c("puid", "citizenship_desc", "profile_academic_period", 
-                             "grad_1_overall_gpa", "ACT_composite", "SAT_old", 
-                             "profile_highest_sat_crit_read", "SAT_old_Math", 
-                             "profile_highest_sat_writing")
+colnames(students_test_scores) <- c("hashed_puid", "citizenship_desc", "profile_academic_period", 
+                             "ACT_composite", "SAT_old", "profile_highest_sat_crit_read", 
+                             "SAT_old_Math", "profile_highest_sat_writing")
 
 # Rename SAT total column for merging purposes
 colnames(ACT_to_SAT_new) <- c("ACT_composite", "SAT_new", 
@@ -44,7 +43,7 @@ colnames(ACT_to_SAT_new) <- c("ACT_composite", "SAT_new",
 # Convert old SAT math score to new SAT math score
 # Combine new SAT evidence-based reading and writing score with new SAT math score for new SAT total score
 SAT_new <- students_test_scores %>% 
-  mutate("SAT_old_W+CR"=profile_highest_sat_crit_read+profile_highest_sat_writing) %>% 
+  mutate("SAT_old_W+CR" = profile_highest_sat_crit_read + profile_highest_sat_writing) %>% 
   filter(!is.na(SAT_old)) %>% # Filter for students who took the SAT
   left_join(SAT_old_WCR_to_SAT_new_EBRW, by="SAT_old_W+CR") %>% 
   left_join(SAT_old_M_to_SAT_new_M, by="SAT_old_Math") %>% 
@@ -69,13 +68,29 @@ students_test_scores_equated <- rbind(SAT_new, ACT_all, no_test_all)
 
 # Add coloumn to student data with equated concordance scores
 concordance_scores <- students_test_scores_equated %>% 
-  select(puid, SAT_new)
+  select(hashed_puid, SAT_new)
 students <- students %>% 
-  left_join(concordance_scores, by="puid")
+  left_join(concordance_scores, by="hashed_puid")
 
 # Calculate the Pearson correlation between graduating GPA and new SAT score
 # Generate a scatter plot matrix for graduating GPA and new SAT score
-cor.test(students_test_scores_equated$grad_1_overall_gpa, students_test_scores_equated$SAT_new)
-data.gpa <- students_test_scores_equated %>% 
-  select(grad_1_overall_gpa, SAT_new) %>% 
-  chart.Correlation(method = "pearson", histogram = TRUE, pch = 16)
+# cor.test(students_test_scores_equated$grad_1_overall_gpa, students_test_scores_equated$SAT_new)
+# data.gpa <- students_test_scores_equated %>% 
+#   select(grad_1_overall_gpa, SAT_new) %>% 
+#   chart.Correlation(method = "pearson", histogram = TRUE, pch = 16)
+
+# Exploring missing test scores -------------------------------------------
+
+# Filter for students who do not have either ACT or SAT scores
+test_missing <- students[is.na(students$SAT_new),]
+table(test_missing$profile_residence_desc)
+table(test_missing$graduated_flag)
+
+# Remove international students because they are not required to do these tests
+test_missing_local <- filter(test_missing, profile_residence_desc != "Foreign")
+table(test_missing_local$profile_admissions_pop_desc)
+table(test_missing_local$graduated_flag)
+
+# Focus on new students who should have test scores
+test_missing_new <- filter(test_missing_local, profile_admissions_pop_desc == "New First Time")
+table(test_missing_new$graduated_flag)
