@@ -11,7 +11,6 @@
 
 library(readr)
 
-
 # Function replacing Yes and No variables as 1s and 0s
 yes_one_no_zero <- function(x){
   x[x=="N"] <- 0
@@ -21,23 +20,34 @@ yes_one_no_zero <- function(x){
   as.logical(as.numeric(x))
 }
 
+nas_to_zeros <- function(y){
+  y[is.na(y)] <- 0
+}
+
 # Import student data and define data type for each column
-students <- read_csv("one_student_one_row_de_identified.csv", 
+students <- read_csv("one_student_one_row_de_identified_3.csv", 
+                     na = c("", "NA","–","‡","†","NULL"),
                      col_types = cols(
-                       puid = col_character(),
-                       person_uid = col_character(),
+                       hashed_puid = col_character(),
+                       hashed_person_uid = col_character(),
                        academic_school_grouping_desc = col_character(),
                        department_short_title = col_character(),
                        profile_academic_period = col_integer(),
                        profile_academic_period_desc = col_character(),
                        profile_admissions_population = col_character(),
+                       profile_admissions_pop_desc = col_character(),
                        profile_college = col_character(),
                        profile_firstime_fulltime_ind = col_character(),
                        profile_gender_desc = col_character(),
-                       profile_highest_act_composite = col_double(),
-                       profile_highest_sat_crit_read = col_double(),
                        profile_highest_sat_math = col_double(),
                        profile_highest_sat_writing = col_double(),
+                       profile_highest_sat_crit_read = col_double(),
+                       profile_highest_act_english = col_double(),
+                       profile_highest_act_math = col_double(),
+                       profile_highest_act_reading = col_double(),
+                       profile_highest_act_sci_reason = col_double(),
+                       profile_highest_act_composite = col_double(),
+                       profile_highest_act_englwrit = col_double(),
                        profile_major = col_character(),
                        profile_reporting_campus = col_character(),
                        profile_reporting_ethnicity = col_character(),
@@ -51,49 +61,53 @@ students <- read_csv("one_student_one_row_de_identified.csv",
                        four_year_graduation_flag = col_logical(),
                        five_year_graduation_flag = col_logical(),
                        six_year_graduation_flag = col_logical(),
-                       grad_1_academic_period = col_integer(),
-                       grad_1_overall_gpa = col_double(),
-                       grad_1_overall_credits_earned = col_double(),
-                       grad_1_fed_loan_amount_not_parent = col_double(),
-                       grad_1_fed_parent_loan_amount = col_double(),
-                       grad_1_degree_1_type = col_character(),
-                       grad_1_degree_1_college = col_character(),
-                       grad_1_degree_1_major = col_character(),
-                       grad_1_degree_2_type = col_character(),
-                       grad_1_degree_2_college = col_character(),
-                       grad_1_degree_2_major = col_character(),
-                       grad_1_degree_3_type = col_character(),
-                       grad_1_degree_3_college = col_character(),
-                       grad_1_degree_3_major = col_character(),
-                       grad_1_degree_4_type = col_character(),
-                       grad_1_degree_4_college = col_character(),
-                       grad_1_degree_4_major = col_character(),
-                       grad_1_degree_5_type = col_character(),
-                       grad_1_degree_5_college = col_character(),
-                       grad_1_degree_5_major = col_character(),
-                       grad_2_academic_period = col_integer(),
-                       grad_2_overall_gpa = col_double(),
-                       grad_2_overall_credits_earned = col_double(),
-                       grad_2_fed_loan_amount_not_parent = col_double(),
-                       grad_2_fed_parent_loan_amount = col_double(),
-                       grad_2_degree_1_type = col_character(),
-                       grad_2_degree_1_college = col_character(),
-                       grad_2_degree_1_major = col_character(),
-                       grad_2_degree_2_type = col_character(),
-                       grad_2_degree_2_college = col_character(),
-                       grad_2_degree_2_major = col_character(),
-                       grad_2_degree_3_type = col_character(),
-                       grad_2_degree_3_college = col_character(),
-                       grad_2_degree_3_major = col_character(),
-                       grad_3_academic_period = col_integer(),
-                       grad_3_overall_gpa = col_double(),
-                       grad_3_overall_credits_earned = col_double(),
-                       grad_3_fed_loan_amount_not_parent = col_double(),
-                       grad_3_fed_parent_loan_amount = col_double(),
-                       grad_3_degree_1_type = col_character(),
-                       grad_3_degree_1_college = col_character(),
-                       grad_3_degree_1_major = col_character(),
-                       pell_efc = col_double(),
+                       graduated_flag = col_logical(),
+                       associate_1_grad = col_integer(),
+                       associate_1_overall_gpa = col_double(),
+                       associate_1_overall_credits_earned = col_double(),
+                       bach_1_grad = col_integer(),
+                       bach_1_overall_gpa = col_double(),
+                       bach_1_overall_credits_earned = col_double(),
+                       #grad_1_fed_loan_amount_not_parent = col_double(),
+                       #grad_1_fed_parent_loan_amount = col_double(),
+                       #grad_1_degree_1_type = col_character(),
+                       #grad_1_degree_1_college = col_character(),
+                       #grad_1_degree_1_major = col_character(),
+                       #grad_1_degree_2_type = col_character(),
+                       #grad_1_degree_2_college = col_character(),
+                       #grad_1_degree_2_major = col_character(),
+                       #grad_1_degree_3_type = col_character(),
+                       #grad_1_degree_3_college = col_character(),
+                       #grad_1_degree_3_major = col_character(),
+                       #grad_1_degree_4_type = col_character(),
+                       #grad_1_degree_4_college = col_character(),
+                       #grad_1_degree_4_major = col_character(),
+                       #grad_1_degree_5_type = col_character(),
+                       #grad_1_degree_5_college = col_character(),
+                       #grad_1_degree_5_major = col_character(),
+                       bach_2_grad = col_integer(),
+                       bach_2_overall_gpa = col_double(),
+                       bach_2_overall_credits_earned = col_double(),
+                       #grad_2_fed_loan_amount_not_parent = col_double(),
+                       #grad_2_fed_parent_loan_amount = col_double(),
+                       #grad_2_degree_1_type = col_character(),
+                       #grad_2_degree_1_college = col_character(),
+                       #grad_2_degree_1_major = col_character(),
+                       #grad_2_degree_2_type = col_character(),
+                       #grad_2_degree_2_college = col_character(),
+                       #grad_2_degree_2_major = col_character(),
+                       #grad_2_degree_3_type = col_character(),
+                       #grad_2_degree_3_college = col_character(),
+                       #grad_2_degree_3_major = col_character(),
+                       bach_3_grad = col_integer(),
+                       bach_3_overall_gpa = col_double(),
+                       bach_3_overall_credits_earned = col_double(),
+                       #grad_3_fed_loan_amount_not_parent = col_double(),
+                       #grad_3_fed_parent_loan_amount = col_double(),
+                       #grad_3_degree_1_type = col_character(),
+                       #grad_3_degree_1_college = col_character(),
+                       #grad_3_degree_1_major = col_character(),
+                       #pell_efc = col_double(),
                        percent_semesters_with_payment_plan = col_double(),
                        county_desc = col_character(),
                        nation_of_citizenship_desc = col_character(),
@@ -115,7 +129,7 @@ students <- read_csv("one_student_one_row_de_identified.csv",
                        hs_title_i_school_status = col_character(),
                        hs_urban_centric_locale = col_character(),
                        horizons_flag = col_logical(),
-                       incoming_credits_flag = col_logical(),
+                       incoming_credits_flag = col_character(),
                        incoming_credits_distributed_credits = col_double(),
                        total_incoming_credits = col_double(),
                        incoming_credits_undistributed_credits = col_double(),
@@ -149,14 +163,35 @@ students <- read_csv("one_student_one_row_de_identified.csv",
                        military_veteran_flag = col_logical(),
                        military_family_flag = col_logical(),
                        wiepgroup_mentoring_flag = col_logical(),
-                       wieppair_mentoring_flag = col_logical()))
+                       wieppair_mentoring_flag = col_logical(),
+                       reason_for_leaving = col_character(),
+                       overall_gpa_when_leaving = col_double(),
+                       one_year_overall_gpa = col_double(),
+                       one_year_credits_attempted = col_double(),
+                       one_year_credits_earned = col_double()))
 
 students$profile_firstime_fulltime_ind <- yes_one_no_zero(students$profile_firstime_fulltime_ind)
 students$profile_underrep_minority_ind <- yes_one_no_zero(students$profile_underrep_minority_ind)
 
-students$profile_gender_desc[students$profile_gender_desc=="Female"] <- 0
-students$profile_gender_desc[students$profile_gender_desc=="Male"] <- 1
-students$profile_gender_desc <- as.logical(as.numeric(students$profile_gender_desc))
+students$profile_gender_desc <- as.factor(students$profile_gender_desc)
+students$profile_gender[students$profile_gender_desc=="Female"] <- 0
+students$profile_gender[students$profile_gender_desc=="Male"] <- 1
+students$profile_gender <- as.logical(as.numeric(students$profile_gender))
+
+# Replace NAs with zeros for relevant variables
+students$percent_semesters_with_payment_plan <- nas_to_zeros(students$percent_semesters_with_payment_plan)
+students$incoming_credits_flag <- nas_to_zeros(students$incoming_credits_flag)
+students$mep_academic_boot_camp <- nas_to_zeros(students$mep_academic_boot_camp)
+students$si_count <- nas_to_zeros(students$si_count)
+
+# Split academic period description into a column for term (Fall or Spring) and year
+term <- str_split_fixed(students$profile_academic_period_desc, " ", 2)
+colnames(term) <- c("Term","Year")
+students <- cbind(students, term)
+
+# Create column "transfer" for transfer student indicator
+students$transfer <- FALSE
+students[students$profile_admissions_population == "T" | students$profile_admissions_population == "ST","transfer" ] <- TRUE 
 
 # Import semester data and define data type for each column
 # Dates have varying formats within the same column so they are imported as character strings
@@ -457,3 +492,24 @@ semesters <- read_csv("grades_join_with_all_de_identified.csv",
                         wiep_pair_mentoring_total_meetings = col_double(),
                         wiep_pair_mentoring_total_socials = col_double()
                       ))
+
+colnames(semesters)[9] <- "hashed_puid"
+
+semesters <- semesters %>% 
+  select(-semester,-reporting_campus,-campus,-campus_desc,tsw_sites,-person_uid,-underrepresented_minority,
+         -student_level,-first_concentration,-county_apa,-state_province_apa,-nation_of_citizenship_apa,-athlete_flag,
+         -sport_list,-sport_list_desc,-lgbtq_flag,-vet_military_flag,-vet_military_campus,-vet_military_student_level,
+         -vet_military_type)
+
+undergrads <- students$hashed_puid
+
+write_csv(as.data.frame(undergrads), "undergrads.csv")
+write_csv(semesters, "semesters.csv")
+
+#####################
+
+semestersFile <- "grades_join_with_all_de_identified.csv"
+chunkSize <- 200000
+con <- file(description = semestersFile, open = "r")
+data <- read.table(con, nrows=chunkSize, header = TRUE, fill = TRUE, sep =",")
+close(con)
