@@ -1,15 +1,15 @@
-##############################
-####################  waller-d
-#
-#
-#  Data import and cleaning
-#  for MSP
-#
-#
-####################
-##############################
+# Title -------------------------------------------------------------------
+
+#  Data import and cleaning for MSP
+
+
+# Packages ----------------------------------------------------------------
 
 library(readr)
+library(stringr)
+
+
+# Functions ---------------------------------------------------------------
 
 # Function replacing Yes and No variables as 1s and 0s
 yes_one_no_zero <- function(x){
@@ -20,9 +20,13 @@ yes_one_no_zero <- function(x){
   as.logical(as.numeric(x))
 }
 
+# Function to replace NAs with 0s
 nas_to_zeros <- function(y){
   y[is.na(y)] <- 0
 }
+
+
+# Import student profile data ---------------------------------------------
 
 # Import student data and define data type for each column
 students <- read_csv("one_student_one_row_de_identified_3.csv", 
@@ -170,15 +174,17 @@ students <- read_csv("one_student_one_row_de_identified_3.csv",
                        one_year_credits_attempted = col_double(),
                        one_year_credits_earned = col_double()))
 
+# Replace Yes and No responses to 1s and 0s for first-time full-time and URM students
 students$profile_firstime_fulltime_ind <- yes_one_no_zero(students$profile_firstime_fulltime_ind)
 students$profile_underrep_minority_ind <- yes_one_no_zero(students$profile_underrep_minority_ind)
 
+# Change gender data type to factor and create a new column with gender as 0s for female and 1s for male
 students$profile_gender_desc <- as.factor(students$profile_gender_desc)
 students$profile_gender[students$profile_gender_desc=="Female"] <- 0
 students$profile_gender[students$profile_gender_desc=="Male"] <- 1
 students$profile_gender <- as.logical(as.numeric(students$profile_gender))
 
-# Replace NAs with zeros for relevant variables
+# Replace NAs with 0s for relevant variables (semesters on payment plan, incoming credits, MEP bootcamp, SI count)
 students$percent_semesters_with_payment_plan <- nas_to_zeros(students$percent_semesters_with_payment_plan)
 students$incoming_credits_flag <- nas_to_zeros(students$incoming_credits_flag)
 students$mep_academic_boot_camp <- nas_to_zeros(students$mep_academic_boot_camp)
@@ -191,7 +197,15 @@ students <- cbind(students, term)
 
 # Create column "transfer" for transfer student indicator
 students$transfer <- FALSE
-students[students$profile_admissions_population == "T" | students$profile_admissions_population == "ST","transfer" ] <- TRUE 
+students$transfer <- replace(students$transfer, students$profile_admissions_population == "T" | students$profile_admissions_population == "ST", TRUE)
+
+# Create variables for support programs
+# Variables for orientation - bgr, bgri, bop_flag
+# Variables for minoritized students - bop_flag, mep_academic_boot_camp, horizons_flag, wiepgroup_mentoring_flag, wieppair_mentoring_flag
+# Variables for at-risk students - drc_flag, student_of_concern_flag
+# Other variables - learning_communities_flag, percent_semesters_with_payment_plan, cco_internship_flag, coop_flag, si_attended_flag, study_abroad_flag
+
+# Import semester data ----------------------------------------------------
 
 # Import semester data and define data type for each column
 # Dates have varying formats within the same column so they are imported as character strings
@@ -493,23 +507,8 @@ semesters <- read_csv("grades_join_with_all_de_identified.csv",
                         wiep_pair_mentoring_total_socials = col_double()
                       ))
 
-colnames(semesters)[9] <- "hashed_puid"
-
-semesters <- semesters %>% 
-  select(-semester,-reporting_campus,-campus,-campus_desc,tsw_sites,-person_uid,-underrepresented_minority,
-         -student_level,-first_concentration,-county_apa,-state_province_apa,-nation_of_citizenship_apa,-athlete_flag,
-         -sport_list,-sport_list_desc,-lgbtq_flag,-vet_military_flag,-vet_military_campus,-vet_military_student_level,
-         -vet_military_type)
-
-undergrads <- students$hashed_puid
-
-write_csv(as.data.frame(undergrads), "undergrads.csv")
-write_csv(semesters, "semesters.csv")
-
-#####################
-
-semestersFile <- "grades_join_with_all_de_identified.csv"
-chunkSize <- 200000
-con <- file(description = semestersFile, open = "r")
-data <- read.table(con, nrows=chunkSize, header = TRUE, fill = TRUE, sep =",")
-close(con)
+# semesters <- semesters %>% 
+#   select(-semester,-reporting_campus,-campus,-campus_desc,tsw_sites,-person_uid,-underrepresented_minority,
+#          -student_level,-first_concentration,-county_apa,-state_province_apa,-nation_of_citizenship_apa,-athlete_flag,
+#          -sport_list,-sport_list_desc,-lgbtq_flag,-vet_military_flag,-vet_military_campus,-vet_military_student_level,
+#          -vet_military_type)
