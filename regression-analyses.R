@@ -14,6 +14,8 @@ standardize <- function(data){
   z <- (data - mean(data, na.rm = TRUE)) / sd(data, na.rm = TRUE)
   return(z)
 }
+
+
 # Data selection ----------------------------------------------------------
 
 # Filter student data for new students or transfer students only
@@ -229,12 +231,12 @@ print(1 - logLik(logreg.model.sat_sep.ethnicity.6) / logLik(nullmodel.6))
 print(1 - exp(-2 / n.6 * (logLik(logreg.model.sat_sep.ethnicity.6) - logLik(nullmodel.6))))
 
 # Linear regression model with SAT scores (math and ERW) and ethnicity predicting one year overall GPA including interaction effects
-reg.model.sat_sep.ethnicity.gpa1.int <- lm(one_year_overall_gpa.z ~ SAT_ERW_new.z + SAT_math_new.z + ethnicity.f + SAT_total_new.z:ethnicity.f, 
+reg.model.sat_sep.ethnicity.gpa1.int <- lm(one_year_overall_gpa.z ~ SAT_ERW_new.z + SAT_math_new.z + ethnicity.f + SAT_ERW_new.z:ethnicity.f + SAT_math_new.z:ethnicity.f, 
                                        data = students_ethnicity_scope_1)
 summary(reg.model.sat_sep.ethnicity.gpa1.int)
 
 # Logistic regression model with SAT scores (math and ERW) and ethnicity predicting one year retention including interaction effects
-logreg.model.sat_sep.ethnicity.1.int <- glm(one_year_retention_flag ~ SAT_ERW_new.z + SAT_math_new.z + ethnicity.f + SAT_total_new.z:ethnicity.f, 
+logreg.model.sat_sep.ethnicity.1.int <- glm(one_year_retention_flag ~ SAT_ERW_new.z + SAT_math_new.z + ethnicity.f + SAT_ERW_new.z:ethnicity.f + SAT_math_new.z:ethnicity.f, 
                                         data=students_ethnicity_scope_1, 
                                         family=binomial(link="logit"))
 summary(logreg.model.sat_sep.ethnicity.1.int)
@@ -242,7 +244,7 @@ print(1 - logLik(logreg.model.sat_sep.ethnicity.1.int) / logLik(nullmodel.1))
 print(1 - exp(-2 / n.1 * (logLik(logreg.model.sat_sep.ethnicity.1.int) - logLik(nullmodel.1))))
 
 # Logistic regression model with SAT scores (math and ERW) and ethnicity predicting six year graduation including interaction effects
-logreg.model.sat_sep.ethnicity.6.int <- glm(six_year_graduation_flag ~ SAT_ERW_new.z + SAT_math_new.z + ethnicity.f + SAT_total_new.z:ethnicity.f, 
+logreg.model.sat_sep.ethnicity.6.int <- glm(six_year_graduation_flag ~ SAT_ERW_new.z + SAT_math_new.z + ethnicity.f + SAT_ERW_new.z:ethnicity.f + SAT_math_new.z:ethnicity.f, 
                                         data=students_ethnicity_scope_6, 
                                         family=binomial(link="logit"))
 summary(logreg.model.sat_sep.ethnicity.6.int)
