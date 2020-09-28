@@ -199,6 +199,15 @@ students <- cbind(students, term)
 students$transfer <- FALSE
 students$transfer <- replace(students$transfer, students$profile_admissions_population == "T" | students$profile_admissions_population == "ST", TRUE)
 
+# Create column "URM" for non-White, non-Asian, and non-international student indicator
+students$URM <- TRUE
+students$URM <- replace(students$URM, students$profile_reporting_ethnicity == "White" | 
+                          students$profile_reporting_ethnicity == "Asian" | 
+                          students$profile_reporting_ethnicity == "International" |
+                          students$profile_reporting_ethnicity == "Unknown" |
+                          students$profile_reporting_ethnicity == "2 or more races", 
+                        FALSE)
+
 # Create variables for support programs
 # Variables for orientation - bgr, bgri, bop_flag
 # Variables for minoritized students - bop_flag, mep_academic_boot_camp, horizons_flag, wiepgroup_mentoring_flag, wieppair_mentoring_flag
