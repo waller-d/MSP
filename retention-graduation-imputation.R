@@ -21,10 +21,10 @@ student_outcomes <- students %>%
 # If a student is retained after two years but not after one year, this codes changes the one year retention flag to TRUE (etc.)
 # If a student graduated after three years but not after four yeras, this code changes the four year graduation flag to TRUE (etc.)
 ind_1 <- student_outcomes$two_year_retention_flag > student_outcomes$one_year_retention_flag
-students[ind_1,"one_year_retention_flag"] <- TRUE
+#students[ind_1,"one_year_retention_flag"] <- TRUE
 
 ind_2 <- student_outcomes$three_year_retention_flag > student_outcomes$two_year_retention_flag
-students[ind_2,"two_year_retention_flag"] <- TRUE
+#students[ind_2,"two_year_retention_flag"] <- TRUE
 
 ind_3 <- student_outcomes$three_year_graduation_flag > student_outcomes$four_year_graduation_flag
 students[ind_3,"four_year_graduation_flag"] <- TRUE
